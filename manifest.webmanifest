@@ -1,0 +1,16 @@
+{
+  "name": "HappyBCN — Launch Workspace",
+  "short_name": "HappyBCN",
+  "description": "HappyBCN launch workspace — plan, finance model, segments, roadmap.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F6F5FB",
+  "theme_color": "#FF5C7A",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
