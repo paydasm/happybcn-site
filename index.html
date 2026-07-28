@@ -1221,26 +1221,42 @@ function selOpts(opts,val,handler){return `<select class="sel" onchange="${handl
 let _lid=100,_pid=100,_aid=100;
 
 /* ---- LOCATION ---- */
-let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80};
-/* ---- Multi-stage footfall→sales funnel: street-type modifiers ----
-   Neutral ('') reproduces the legacy ~2% capture (0.35×0.15×0.38≈2.0%). Each street type
-   re-weights the funnel + ATV to reflect how that kind of street actually converts. */
+let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97};
+/* ---- Multi-stage footfall→sales funnel ----
+   TWO layers. (1) Street type shapes the FOOTFALL→ENTRY funnel: notice → stop → enter,
+   which multiply to the effective walk-in capture. Neutral ('') reproduces the legacy
+   ~2% capture (0.35×0.15×0.38≈2.0%). (2) The audience mix (tourist vs local) drives the
+   CONVERSION side — buy-rate and average spend — because a curious tourist and a local
+   with intent convert and spend very differently. Buy/ATV therefore live in the audience
+   layer, not the street type (street type keeps buy=atv=1 to avoid double-counting). */
 const STYPE={
  '':       {label:"—",                    notice:1.00, stop:1.00, entry:1.00, buy:1.00, atv:1.00},
- local:    {label:"Local shopping",       notice:1.00, stop:1.20, entry:1.15, buy:1.15, atv:1.00},
- tourist:  {label:"Tourist / mixed",      notice:1.25, stop:1.00, entry:0.95, buy:0.80, atv:0.95},
- transit:  {label:"Transit artery",       notice:0.70, stop:0.60, entry:0.85, buy:0.90, atv:1.00},
- quiet:    {label:"Quiet / residential",  notice:0.90, stop:1.15, entry:1.10, buy:1.10, atv:1.05}
+ local:    {label:"Local shopping",       notice:1.00, stop:1.20, entry:1.15, buy:1.00, atv:1.00},
+ tourist:  {label:"Tourist / mixed",      notice:1.25, stop:1.00, entry:0.95, buy:1.00, atv:1.00},
+ transit:  {label:"Transit artery",       notice:0.70, stop:0.60, entry:0.85, buy:1.00, atv:1.00},
+ quiet:    {label:"Quiet / residential",  notice:0.90, stop:1.15, entry:1.10, buy:1.00, atv:1.00}
 };
 const STYPE_KEYS=Object.keys(STYPE);
+/* Default tourist share (%) by street type — used when a unit/street leaves Tourist mix blank. */
+const DEFAULT_TOURIST={'':40, local:25, tourist:70, transit:50, quiet:20};
 function funnelRates(stype){
   const m=STYPE[stype]||STYPE[''];
   const w=(locSettings.windowRate??35)/100*m.notice;   // notice / window-glance
   const s=(locSettings.stopRate??15)/100*m.stop;         // stop & engage
   const e=(locSettings.entryRate??38)/100*m.entry;       // enter given stop
   const cap=w*s*e;                                        // effective walk-in capture
-  const buy=(locSettings.convRate??18)/100*m.buy;         // purchase given entry
-  return {w,s,e,cap,buy,atvM:m.atv,label:m.label};
+  return {w,s,e,cap,label:m.label};
+}
+/* Audience mix → conversion (buy-rate) and value (ATV) multipliers.
+   Tourist: browses more, buys a touch less per entry, gift-sized basket.
+   Local: comes with intent, higher buy-rate, everyday basket. */
+function audienceMix(o){
+  const st=o.stype||'';
+  const raw=(o.touristPct!=null&&o.touristPct!=='')?Number(o.touristPct):(DEFAULT_TOURIST[st]??40);
+  const t=Math.max(0,Math.min(100,raw))/100;             // tourist fraction 0–1
+  const buyMult=t*(locSettings.buyTourist??0.85)+(1-t)*(locSettings.buyLocal??1.15);
+  const atvMult=t*(locSettings.atvTourist??1.05)+(1-t)*(locSettings.atvLocal??0.97);
+  return {t,touristPct:Math.round(raw),buyMult,atvMult,explicit:(o.touristPct!=null&&o.touristPct!=='')};
 }
 /* Target neighbourhoods — where to focus the search (indicative secondary-street rent bands, €/m²·mo). */
 let locAreas=[
@@ -1266,9 +1282,10 @@ function streetKPI(s){
   if(!hasWk&&!hasWe)return null;
   const blend=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);
   const hrs=(s.hrs!=null&&s.hrs!=='')?Number(s.hrs):(locSettings.opHours??10);
-  const F=funnelRates(s.stype||'');
-  const perDay=blend*6*hrs, entr=perDay*F.cap, tx=entr*F.buy;   // footfall → funnel capture → sales
-  return {perDay,entr,tx,cap:F.cap,vsPlan:planTx>0?tx/planTx:0};
+  const F=funnelRates(s.stype||''); const am=audienceMix(s);
+  const buyEff=(locSettings.convRate??18)/100*am.buyMult;
+  const perDay=blend*6*hrs, entr=perDay*F.cap, tx=entr*buyEff;   // footfall → capture → audience-weighted buy
+  return {perDay,entr,tx,cap:F.cap,buyEff,touristPct:am.touristPct,vsPlan:planTx>0?tx/planTx:0};
 }
 function updStreet(id,k,v){const x=locStreets.find(r=>r.id===id);if(x){x[k]=["name","area","rentBand","anchors","note","src","stype"].includes(k)?v:(v===""?"":Number(v));render();}}
 function addStreet(){locStreets.push({id:"ST"+(_stid++),area:"",name:"",foot:"",sfWk:"",sfWe:"",fit:"",hrs:"",rentBand:"",anchors:"",src:"est",note:""});render();}
@@ -1353,16 +1370,17 @@ function locKPI(l){
   const hasWk=l.fwWk!==''&&l.fwWk!=null&&!isNaN(wk), hasWe=l.fwWe!==''&&l.fwWe!=null&&!isNaN(we);
   if(!hasWk&&!hasWe)return null;
   const pos=(l.posFactor!=null&&l.posFactor!=='')?Number(l.posFactor):1;   // micro-location: corner near metro >1, dead mid-block <1
-  const F=funnelRates(l.stype||'');
+  const F=funnelRates(l.stype||''); const am=audienceMix(l);
   const blend10=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);   // Mon–Sat, Saturday at the weekend rate
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
   const notice=perDay*F.w, stop=notice*F.s, entr=stop*F.e;    // funnel: pass → notice → stop → enter
-  const tx=entr*F.buy;                                        // purchase given entry
-  const atvEff=atv*F.atvM;
+  const buyEff=(locSettings.convRate??18)/100*am.buyMult;     // buy-rate, audience-weighted (tourist vs local)
+  const tx=entr*buyEff;                                       // purchase given entry
+  const atvEff=atv*am.atvMult;                                // spend, audience-weighted
   const eurMo=tx*atvEff*days;
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
-  return {blend10,perDay,notice,stop,entr,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,buy:F.buy,atvEff,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
+  return {blend10,perDay,notice,stop,entr,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,buyEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
 }
 function footfallCard(){
   const conv=locSettings.convRate??18, oph=locSettings.opHours??10;
@@ -1371,25 +1389,28 @@ function footfallCard(){
   const capEff=funnelRates('').cap;                       // neutral effective capture (w×s×e)
   const reqEntrDay=planTx/(conv/100), reqPassDay=reqEntrDay/capEff, reqPer10=reqPassDay/oph/6;
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Footfall → sales model — the conversion funnel</p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 12px">Turns street footfall into expected sales through an explicit five-stage funnel, so a unit's rent can be judged against realistic revenue. Every passer is filtered: <b>notices</b> the window → <b>stops</b> to look → <b>enters</b> → <b>buys</b>. The first three multiply into the effective walk-in capture; the neutral defaults reconcile to ~<b>${(capEff*100).toFixed(1)}%</b> capture (the old single number), but each street <b>type</b> below re-weights them. Count pedestrians for 10 min (weekday + Saturday) outside a candidate, log it in <b>Details</b>, and the per-site estimate appears there.</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 12px">Turns street footfall into expected sales through an explicit funnel, so a unit's rent can be judged against realistic revenue. Every passer is filtered: <b>notices</b> the window → <b>stops</b> → <b>enters</b> → <b>buys</b> → <b>spends</b>. Stages ①–③ multiply into the effective walk-in <b>capture</b> and are shaped by the <b>street type</b>; the neutral defaults reconcile to ~<b>${(capEff*100).toFixed(1)}%</b> (the old single number). The <b>buy-rate</b> and <b>spend</b> are then driven by the <b>audience mix</b> — tourist vs local — because a curious tourist and a local with intent convert and spend differently. Count pedestrians for 10 min (weekday + Saturday) outside a candidate, log it in <b>Details</b>, and the per-site estimate appears there.</p>`;
   const A=[["windowRate","① Notice window %"],["stopRate","② Stop & look %"],["entryRate","③ Enter (given stop) %"],["convRate","④ Buy (given entry) %"],["opHours","Footfall hours/day"]];
   const dflt={windowRate:35,stopRate:15,entryRate:38,convRate:18,opHours:10};
   h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:6px">`+A.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="any" value="${locSettings[k]??dflt[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
   h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px"><div class="setrow"><label style="min-width:0">Peak-season × (annualise)</label><input class="num" type="number" step="0.05" value="${locSettings.seasHi??1.25}" onchange="updLocSetting('seasHi',this.value)"></div><div class="setrow"><label style="min-width:0">Low-season ×</label><input class="num" type="number" step="0.05" value="${locSettings.seasLo??0.80}" onchange="updLocSetting('seasLo',this.value)"></div><div class="setrow"><label style="min-width:0"><b>Effective capture (neutral)</b></label><input class="num" type="number" value="${(capEff*100).toFixed(2)}" disabled style="background:#F0EEF9;font-weight:700"></div></div>`;
+  // audience-mix conversion layer
+  h+=`<p class="sectiontitle" style="margin:14px 0 4px;font-size:13px">Audience mix — buy-rate & spend by tourist vs local</p><p class="muted" style="font-size:11.5px;margin:0 0 8px">These multipliers apply to the ⑤ buy-rate and average spend. Set each unit's <b>Tourist mix %</b> in Details (or leave blank to use the street-type default below). Tourist × below 1 on buy = browses more, buys less per entry; local × above 1 = comes with intent.</p><div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:4px">`+[["buyTourist","Tourist buy ×"],["buyLocal","Local buy ×"],["atvTourist","Tourist spend ×"],["atvLocal","Local spend ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="0.05" value="${locSettings[k]??({buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97})[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
   h+=`<div class="grid g4" style="margin-bottom:6px">
     <div class="card stat"><span class="k">Plan target</span><span class="v">${planTx} sales/day</span><span class="sub">Year 1 · €${atv} ATV × ${days} days</span></div>
     <div class="card stat"><span class="k">Entrants needed</span><span class="v">${Math.round(reqEntrDay)}/day</span><span class="sub">at ${conv}% buy rate</span></div>
     <div class="card stat"><span class="k">Footfall needed</span><span class="v">${num(reqPassDay)}/day</span><span class="sub">at ${(capEff*100).toFixed(1)}% capture</span></div>
     <div class="card stat"><span class="k">≈ per 10 min</span><span class="v">${Math.round(reqPer10)}</span><span class="sub">weekday avg · ${oph}h/day</span></div></div>`;
-  // street-type legend
-  h+=`<p class="sectiontitle" style="margin:16px 0 6px;font-size:13px">Street-type modifiers — set each street/unit's type; it re-weights the funnel</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Type</th><th>Notice ×</th><th>Stop ×</th><th>Enter ×</th><th>Buy ×</th><th>ATV ×</th><th>Effective capture</th></tr></thead><tbody>`;
-  STYPE_KEYS.forEach(k=>{const m=STYPE[k];const cp=funnelRates(k).cap;h+=`<tr><td><b>${esc(m.label)}</b>${k===''?' <span class="muted">(default)</span>':''}</td><td>${m.notice.toFixed(2)}</td><td>${m.stop.toFixed(2)}</td><td>${m.entry.toFixed(2)}</td><td>${m.buy.toFixed(2)}</td><td>${m.atv.toFixed(2)}</td><td style="font-weight:700">${(cp*100).toFixed(2)}%</td></tr>`;});
+  // street-type + audience legend
+  h+=`<p class="sectiontitle" style="margin:16px 0 6px;font-size:13px">Street types — capture (①–③) + the default audience each implies</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Type</th><th>Notice ×</th><th>Stop ×</th><th>Enter ×</th><th>Effective capture</th><th>Default tourist %</th><th>Buy-rate</th><th>Spend ×</th></tr></thead><tbody>`;
+  STYPE_KEYS.forEach(k=>{const m=STYPE[k];const cp=funnelRates(k).cap;const am=audienceMix({stype:k});const buyPct=(conv/100*am.buyMult*100);
+    h+=`<tr><td><b>${esc(m.label)}</b>${k===''?' <span class="muted">(default)</span>':''}</td><td>${m.notice.toFixed(2)}</td><td>${m.stop.toFixed(2)}</td><td>${m.entry.toFixed(2)}</td><td style="font-weight:700">${(cp*100).toFixed(2)}%</td><td>${am.touristPct}%</td><td>${buyPct.toFixed(1)}%</td><td>${am.atvMult.toFixed(2)}</td></tr>`;});
   h+=`</tbody></table></div>`;
-  h+=`<p class="muted" style="font-size:12px;margin-top:10px">A street needs roughly <b>${num(reqPassDay)} passers/day</b> (~${Math.round(reqPer10)} per 10 min, weekday) to hit the Year-1 plan at neutral rates. Benchmarks: window-notice ~30–40% on a colourful shopfront; stop ~12–18%; enter-given-stop ~35–45% (→ ~2% combined capture); buy ~15–22% once inside; a healthy retail <b>rent-to-sales ratio ≈ 10–15%</b>. <b>Local shopping</b> streets convert best (intent + repeat); <b>tourist</b> streets pull more eyes but browse more and spend a touch less; <b>transit</b> arteries have big flow but people are rushing; <b>quiet</b> streets have low flow but high intent. Set <b>Busy hrs/day</b> and <b>Type</b> per candidate in Details. Treat every figure as a directional filter, not a promise — replace estimates with your own on-street counts as they come in.</p></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:10px">A street needs roughly <b>${num(reqPassDay)} passers/day</b> (~${Math.round(reqPer10)} per 10 min, weekday) to hit the Year-1 plan at neutral rates. Benchmarks: window-notice ~30–40% on a colourful shopfront; stop ~12–18%; enter-given-stop ~35–45% (→ ~2% combined capture); base buy ~15–22% once inside; a healthy retail <b>rent-to-sales ratio ≈ 10–15%</b>. The two layers are separate: <b>street type</b> decides how much footfall becomes entrants (capture); the <b>audience mix</b> decides how many entrants buy and how much they spend. A tourist-heavy pitch converts a shade lower per head but on higher flow; a local-heavy street converts higher on lower flow. Override the tourist share per unit in Details when you know the pitch. Treat every figure as a directional filter — replace estimates with your own on-street counts as they come in.</p></div>`;
   return h;
 }
 function updLoc(id,k,v){const l=locListings.find(x=>x.id===id);l[k]=["area","link","notes","status","agent","contact","nextAct","nextDate","fwPeak","posType","posInfo","stype"].includes(k)?v:(v===""?"":Number(v));render();}
-function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:""});render();}
+function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:"",stype:"",touristPct:""});render();}
 function rmLoc(id){locListings=locListings.filter(x=>x.id!==id);if(locOpen===id)locOpen=null;render();}
 function toggleLocOpen(id){locOpen=locOpen===id?null:id;render();}
 function updLocCheck(id,key,v){const l=locListings.find(x=>x.id===id);if(!l)return;if(!l.check)l.check={};l.check[key]=v;render();}
@@ -1406,13 +1427,14 @@ function locDrawer(l){
       d+=`<div class="chkitem"><span>${esc(it)}</span><select class="sel chksel ${v==='⚠'?'warn':v==='✓'?'good':''}" onchange="updLocCheck('${l.id}','${key}',this.value)"><option value=""></option><option ${v==='✓'?'selected':''}>✓</option><option ${v==='⚠'?'selected':''}>⚠</option><option ${v==='n/a'?'selected':''}>n/a</option></select></div>`;});
     d+=`</div>`;});
   d+=`</div>`;
-  d+=`<div class="crmrow" style="margin-top:12px"><label>Position</label>${selOpts(['','Corner','Mid-block','Plaza-facing','Feeder street'],l.posType,`updLoc('${l.id}','posType',this.value)`)}<label>Street type</label><select class="sel" onchange="updLoc('${l.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((l.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select><label>Metro / anchors nearby</label><input class="txt" style="min-width:150px" value="${escAttr(l.posInfo)}" onchange="updLoc('${l.id}','posInfo',this.value)"><label>Position factor</label><input class="num" style="width:54px" type="number" step="0.05" value="${escAttr(l.posFactor)}" onchange="updLoc('${l.id}','posFactor',this.value)"></div>`;
-  d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Position factor scales the footfall estimate for the exact spot: corner on a busy junction / next to a metro exit or anchor ≈ 1.1–1.3; a quiet mid-block or dead stretch ≈ 0.7–0.9; default 1.0.</p>`;
+  d+=`<div class="crmrow" style="margin-top:12px"><label>Position</label>${selOpts(['','Corner','Mid-block','Plaza-facing','Feeder street'],l.posType,`updLoc('${l.id}','posType',this.value)`)}<label>Street type</label><select class="sel" onchange="updLoc('${l.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((l.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select><label>Tourist mix %</label><input class="num" style="width:60px" type="number" min="0" max="100" placeholder="${DEFAULT_TOURIST[l.stype||'']??40}" value="${escAttr(l.touristPct)}" onchange="updLoc('${l.id}','touristPct',this.value)"><label>Position factor</label><input class="num" style="width:54px" type="number" step="0.05" value="${escAttr(l.posFactor)}" onchange="updLoc('${l.id}','posFactor',this.value)"></div>`;
+  d+=`<div class="crmrow" style="margin-top:8px"><label>Metro / anchors nearby</label><input class="txt" style="min-width:220px" value="${escAttr(l.posInfo)}" onchange="updLoc('${l.id}','posInfo',this.value)"></div>`;
+  d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Position factor scales footfall for the exact spot (corner / metro-adjacent ≈ 1.1–1.3; dead mid-block ≈ 0.7–0.9; default 1.0). <b>Tourist mix %</b> sets the audience split that drives buy-rate & spend — leave blank to use the street-type default (shown as the placeholder).</p>`;
   d+=`<div class="crmrow" style="margin-top:10px"><label>Footfall — weekday /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWk)}" onchange="updLoc('${l.id}','fwWk',this.value)"><label>Weekend /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWe)}" onchange="updLoc('${l.id}','fwWe',this.value)"><label>Busy hrs/day</label><input class="num" style="width:56px" type="number" value="${escAttr(l.fwHrs)}" onchange="updLoc('${l.id}','fwHrs',this.value)"><label>Peak times seen</label><input class="txt" value="${escAttr(l.fwPeak)}" onchange="updLoc('${l.id}','fwPeak',this.value)"></div>`;
   const kpi=locKPI(l);
   if(kpi){const rr=kpi.rentRatio;
     const verdict=rr==null?'':rr<=15?'<span style="color:var(--st-done);font-weight:700">healthy</span>':rr<=20?'<span style="color:var(--st-inprogress);font-weight:700">workable</span>':'<span style="color:var(--st-blocked);font-weight:700">stretch</span>';
-    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Funnel estimate</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}): ~<b>${num(kpi.perDay)}</b> passers/day → notice ~<b>${num(kpi.notice)}</b> → stop ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Effective capture ${(kpi.cap*100).toFixed(1)}% × buy ${(kpi.buy*100).toFixed(0)}% × ${kpi.oph} busy hrs/day${kpi.pos!==1?` × position ${kpi.pos}`:''}${kpi.atvEff!==(Number(fin.atv)||28)?` · ATV €${kpi.atvEff.toFixed(0)}`:''}.</span></div>`;}
+    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Funnel estimate</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}, ${kpi.touristPct}% tourist${kpi.touristExplicit?'':' est'}): ~<b>${num(kpi.perDay)}</b> passers/day → notice ~<b>${num(kpi.notice)}</b> → stop ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Capture ${(kpi.cap*100).toFixed(1)}% × buy ${(kpi.buyEff*100).toFixed(0)}% (audience-weighted) × ${kpi.oph} busy hrs/day${kpi.pos!==1?` × position ${kpi.pos}`:''} · ATV €${kpi.atvEff.toFixed(0)}.</span></div>`;}
   d+=`<div style="margin-top:12px"><label class="muted" style="font-size:12px;display:block;margin-bottom:4px">Notes</label><textarea class="txa" onchange="updLoc('${l.id}','notes',this.value)">${esc(l.notes||'')}</textarea></div>`;
   return d+`</div>`;
 }
@@ -1427,13 +1449,14 @@ function benchmarkCard(){
   const gpf=v=>v>=0?'+'+eur(v):'−'+eur(Math.abs(v));
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Candidate benchmark — funnel KPIs, side by side <span class="badge">ranked by gross profit after rent</span></p>`;
   h+=`<p class="viewsub" style="margin:-6px 0 10px">Every unit with a footfall figure, run through the conversion funnel and ranked by <b>estimated monthly gross profit after rent</b> (est. sales × ${Math.round(mR*100)}% retail margin − rent). <b>●</b> = portal-verified real listing · <b>○</b> = placeholder. Footfall source: <b>est</b> = street estimate · <b>proxy</b> = inherits its street · <b>data</b> = real count. Replace estimates with on-street counts to firm the ranking.</p>`;
-  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Candidate</th><th>Type</th><th>Rent €</th><th>m²</th><th>€/m²</th><th>Pass/day</th><th>Enter/day</th><th>Sales/day</th><th>% plan</th><th>Est €/mo (season band)</th><th>Rent %</th><th>Gross after rent/mo</th><th>Screen</th></tr></thead><tbody>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Candidate</th><th>Type</th><th>Audience</th><th>Rent €</th><th>m²</th><th>€/m²</th><th>Pass/day</th><th>Enter/day</th><th>Sales/day</th><th>% plan</th><th>Est €/mo (season band)</th><th>Rent %</th><th>Gross after rent/mo</th><th>Screen</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{const l=r.l,k=r.k,c=r.c,rr=k.rentRatio;
     const rrc=rr==null?'':rr<=15?'ok':rr<=20?'review':'elim';
     const src=l.footSrc||'est';
     h+=`<tr><td><b>${i+1}</b></td>`+
     `<td style="min-width:180px">${l.listingReal?'●':'<span style="opacity:.4">○</span>'} ${esc(l.area||'—')}<div class="muted" style="font-size:10.5px">${esc(src)}${l.srcPortal?' · '+esc(l.srcPortal)+(l.srcDate?' '+esc(l.srcDate):''):''}</div></td>`+
     `<td>${esc((STYPE[l.stype||'']||STYPE['']).label)}</td>`+
+    `<td style="white-space:nowrap">${k.touristPct}% tour<div class="muted" style="font-size:10px">buy ${(k.buyEff*100).toFixed(0)}% · ATV €${k.atvEff.toFixed(0)}</div></td>`+
     `<td>${eur(l.rent)}</td>`+
     `<td>${l.size||'—'}</td>`+
     `<td>${c.perM2!=null?Math.round(c.perM2):'—'}</td>`+
