@@ -1,6 +1,6 @@
 /* HappyBCN service worker — network-first for the app shell so live deploys always win;
    cache is only an offline fallback. Workspace data (Supabase) is handled by the app, not here. */
-const CACHE = 'happybcn-v19';
+const CACHE = 'happybcn-v20';
 const PRECACHE = [
   '/', '/index.html',
   '/manifest.webmanifest',
