@@ -1099,6 +1099,76 @@ function segModelCard(seg,label,color){const m=segModels[seg];
  [["offer","Offer / format"],["econ","Unit economics"],["terms","Pricing & terms"],["target","Year-1 target build"],["who","Top targets / who"]].forEach(([k,l])=>{h+=`<div style="margin-bottom:10px"><label class="bb">${l}</label>`+taField(m[k],`updSM('${seg}','${k}',this.value)`)+`</div>`;});
  return h+`</div>`;
 }
+/* ---- Monthly unit uptake by product (launch ramp × per-product seasonality) ---- */
+/* Launch-date helpers — the month labels & seasonality all derive from one launch month. */
+const MON3=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function parseStartFrom(months){const m0=(months&&months[0]&&months[0].m)||"Nov ’26";const mm=MON3.findIndex(x=>m0.toLowerCase().startsWith(x.toLowerCase()));const y=m0.match(/(\d{2,4})/);const yr=y?(y[1].length<=2?2000+Number(y[1]):Number(y[1])):2026;return {mo:(mm>=0?mm+1:11),yr};}
+function launchStart(){if(!finMonthly.start||!finMonthly.start.mo)finMonthly.start=parseStartFrom(finMonthly.months);return finMonthly.start;}
+function regenMonthLabels(){const s=launchStart();(finMonthly.months||[]).forEach((mo,i)=>{const idx=(s.mo-1+i)%12;const yr=s.yr+Math.floor((s.mo-1+i)/12);mo.m=MON3[idx]+" ’"+String(yr).slice(-2);});}
+function setLaunchStart(mo,yr){
+  const old=launchStart();const M=finMonthly.months||[];
+  // remember each ramp weight by the CALENDAR month it currently sits on, then re-lay them out
+  // from the new launch month — so the whole ramp (incl. its Dec spike / Aug dip) travels with the calendar.
+  const byCal={};M.forEach((m,i)=>{byCal[(old.mo-1+i)%12]={r:m.r,b:m.b,p:m.p};});
+  finMonthly.start={mo:Number(mo)||old.mo, yr:Number(yr)||old.yr};
+  const nm=finMonthly.start.mo;
+  M.forEach((m,i)=>{const w=byCal[(nm-1+i)%12];if(w){m.r=w.r;m.b=w.b;m.p=w.p;}});
+  regenMonthLabels();render();}
+function calIdxArr(){const s=launchStart();return (finMonthly.months||[]).map((_,i)=>(s.mo-1+i)%12);}
+/* Seasonal profiles keyed by CALENDAR month (Jan..Dec), so Summer-led always lands on Jun–Aug
+   no matter which month the store opens in. Applied as a tilt on top of the launch ramp. */
+const SEAS_PRESETS={
+  ramp:{label:"Launch ramp", cal:null},
+  holiday:{label:"Holiday-led", cal:[0.80,0.85,0.90,0.95,1.00,1.00,1.00,0.95,0.95,1.05,1.35,1.70]},
+  summer:{label:"Summer-led", cal:[0.85,0.85,0.90,0.95,1.05,1.30,1.45,1.45,1.20,1.00,0.90,0.85]},
+  spring:{label:"Spring-led", cal:[0.85,0.90,1.20,1.40,1.35,1.15,1.00,0.95,0.95,0.90,0.85,0.85]},
+  custom:{label:"Custom", cal:null}
+};
+const SEAS_KEYS=Object.keys(SEAS_PRESETS);
+function seasMultFor(g){
+  const cal=calIdxArr();
+  const key=g.seasKey||'ramp';
+  if(key==='custom'){const s=Array.isArray(g.seas)?g.seas:[];return cal.map(ci=>{const v=s[ci];return (v===''||v==null)?1:(Number(v)||0);});}
+  const p=SEAS_PRESETS[key]; if(!p||!p.cal) return cal.map(()=>1);
+  return cal.map(ci=>p.cal[ci]);
+}
+function updSeasKey(i,key){const g=segModels.retailMix.groups[i];const old=g.seasKey||'ramp';g.seasKey=key;
+  if(key==='custom'&&!Array.isArray(g.seas)){const src=(SEAS_PRESETS[old]&&SEAS_PRESETS[old].cal)?SEAS_PRESETS[old].cal:null;g.seas=Array.from({length:12},(_,j)=>src?src[j]:1);}
+  render();}
+function updSeasWeight(i,ci,v){const g=segModels.retailMix.groups[i];if(!Array.isArray(g.seas))g.seas=Array(12).fill(1);g.seas[ci]=(v===''?'':Number(v));render();}
+function monthlyUnitsCard(){
+  const rm=segModels.retailMix; const groups=(rm&&Array.isArray(rm.groups))?rm.groups:[];
+  const months=(finMonthly&&Array.isArray(finMonthly.months))?finMonthly.months:[];
+  if(!groups.length||!months.length) return '';
+  const N=months.length;
+  const ramp=months.map(m=>Number(m.r)||0);
+  const cal=calIdxArr();
+  const st=launchStart();
+  const col=segColor('Retail');
+  const rows=groups.map(g=>{const annual=Number(g.units)||0;const mult=seasMultFor(g);const eff=ramp.map((r,i)=>r*(mult[i]||0));const es=eff.reduce((a,b)=>a+b,0)||1;return {g,annual,mult,cells:eff.map(e=>annual*e/es),custom:(g.seasKey==='custom')};});
+  const monthTot=months.map((m,i)=>rows.reduce((a,r)=>a+r.cells[i],0));
+  const grand=rows.reduce((a,r)=>a+r.annual,0);
+  const maxTot=Math.max(...monthTot,1);
+  const peakI=monthTot.reduce((bi,t,i,arr)=>t>arr[bi]?i:bi,0);
+  const seasoned=rows.filter(r=>(r.g.seasKey||'ramp')!=='ramp').length;
+  let h=`<div class="card" style="margin-top:16px;border-top:4px solid ${col}"><p class="sectiontitle" style="color:${col}">Monthly unit uptake — by product <span class="badge">Year 1 · per-product seasonality</span></p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">First-year <b>units sold per product, month by month</b>, as the store ramps from opening. Each product's annual plan spreads across the 12 months using the launch ramp <b>×</b> its own <b>seasonal profile</b> — so the store-opening ramp stays intact and each product tilts to when it actually sells. Pick a profile per row (or <b>Custom</b> to hand-tune); the <b>Annual</b> column is the retail-mix total, editable here. <b>${num(grand)}</b> units across Year 1, peaking in <b>${esc(months[peakI].m)}</b> (${num(monthTot[peakI])} units); ${seasoned} of ${rows.length} products have a custom season.</p>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;padding:8px 10px;background:#F7F6FC;border-radius:8px"><label class="bb" style="margin:0">Launch month</label><select class="sel" onchange="setLaunchStart(this.value, ${st.yr})">`+MON3.map((mo,j)=>`<option value="${j+1}" ${st.mo===j+1?'selected':''}>${mo}</option>`).join('')+`</select><input class="num" style="width:74px" type="number" value="${st.yr}" onchange="setLaunchStart(${st.mo}, this.value)"><span class="muted" style="font-size:11.5px">— change this and every month column relabels &amp; each seasonal profile re-aligns to the calendar automatically.</span></div>`;
+  h+=`<div style="display:flex;align-items:flex-end;gap:4px;height:64px;margin:0 0 14px;padding:0 2px">`+monthTot.map((t,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%"><div style="width:100%;background:${col};border-radius:3px 3px 0 0;height:${Math.max(3,t/maxTot*100)}%" title="${esc(months[i].m)}: ${num(t)} units"></div></div>`).join('')+`</div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th style="text-align:left">Product</th><th>Season</th>`+months.map(m=>`<th>${esc(m.m)}</th>`).join('')+`<th>Annual</th></tr></thead><tbody>`;
+  rows.forEach((r,ri)=>{
+    h+=`<tr><td style="text-align:left;min-width:140px">${esc(r.g.group||'—')}</td>`+
+    `<td><select class="sel" style="min-width:110px" onchange="updSeasKey(${ri},this.value)">`+SEAS_KEYS.map(k=>`<option value="${k}" ${((r.g.seasKey||'ramp')===k)?'selected':''}>${esc(SEAS_PRESETS[k].label)}</option>`).join('')+`</select></td>`+
+    r.cells.map(c=>`<td>${num(c)}</td>`).join('')+
+    `<td><input class="num" style="width:64px" type="number" value="${escAttr(r.g.units)}" onchange="updMix('retailMix',${ri},'units',this.value)"></td></tr>`;
+    if(r.custom){h+=`<tr style="background:#FAF9FE"><td colspan="2" class="muted" style="text-align:right;font-size:11px;padding-right:8px">seasonal weight × (by calendar month)</td>`+
+      months.map((m,mi)=>{const ci=cal[mi];const val=Array.isArray(r.g.seas)?(r.g.seas[ci]??1):1;return `<td><input class="num" style="width:44px;font-size:12px" type="number" step="0.05" value="${escAttr(val)}" onchange="updSeasWeight(${ri},${ci},this.value)"></td>`;}).join('')+`<td></td></tr>`;}
+  });
+  h+=`<tr class="subhdr"><td style="text-align:left;font-weight:800" colspan="2">Total units</td>`+monthTot.map(t=>`<td style="font-weight:800">${num(t)}</td>`).join('')+`<td style="font-weight:800">${num(grand)}</td></tr>`;
+  h+=`</tbody></table></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:8px">Each product row still spreads to its Annual total (the seasonal profile only reshapes <i>when</i> the units land, never the total), so this stays reconciled to the plan. Profiles are a tilt <b>on top of</b> the shared launch ramp — a Summer-led product still opens in November, it just peaks in Jul–Aug. Edit the launch ramp itself in <b>Finance → Launch-year monthly ramp</b>.</p></div>`;
+  return h;
+}
 function viewSegments(){
   const defs={
     "Retail":{c:segColor("Retail"),d:"Physical store(s) in Barcelona plus supporting e-commerce. Adapted HappyNes range, playful Mediterranean positioning, experiential retail.",kpi:"Store revenue, avg transaction value, footfall conversion, sell-through."},
@@ -1123,6 +1193,7 @@ function viewSegments(){
   // Per-segment: model card + bottom-up product-group estimate
   html+=segModelCard('retail','Retail',segColor('Retail'));
   html+=mixCard('retailMix','Retail',segColor('Retail'));
+  html+=monthlyUnitsCard();
   html+=segModelCard('b2b','B2B',segColor('B2B'));
   html+=mixCard('b2bMix','B2B',segColor('B2B'));
   html+=segModelCard('promo','Promotional',segColor('Promotional'));
@@ -1962,6 +2033,7 @@ function updFin(k,v){fin[k]=Number(v);render();}
 /* ---- Launch-year monthly ramp ---- */
 let finMonthly={
  note:"Launch-year monthly ramp — how Year 1 builds month by month (opening ~Nov 2026). Weights are relative and always allocate the full annual Year-1 totals, so this reconciles to the model. Edit the weights to reshape the ramp & seasonality; running cash shows the intra-year trough the €200k must cover (deeper than the year-end figure).",
+ start:{mo:11,yr:2026},
  months:[
   {m:"Nov ’26",r:6,b:3,p:6},{m:"Dec ’26",r:14,b:10,p:16},{m:"Jan ’27",r:6,b:6,p:7},
   {m:"Feb ’27",r:6,b:6,p:5},{m:"Mar ’27",r:7,b:8,p:7},{m:"Apr ’27",r:10,b:11,p:11},
@@ -1969,7 +2041,7 @@ let finMonthly={
   {m:"Aug ’27",r:5,b:4,p:3},{m:"Sep ’27",r:9,b:8,p:8},{m:"Oct ’27",r:11,b:7,p:14}
  ]
 };
-function normalizeMonthly(x){x=x||{};if(typeof x.note!=='string')x.note=finMonthly.note;if(!Array.isArray(x.months)||!x.months.length)x.months=finMonthly.months;return x;}
+function normalizeMonthly(x){x=x||{};if(typeof x.note!=='string')x.note=finMonthly.note;if(!Array.isArray(x.months)||!x.months.length)x.months=finMonthly.months;if(!x.start||!x.start.mo)x.start=parseStartFrom(x.months);return x;}
 function updMonthly(i,k,v){finMonthly.months[i][k]=(k==='m')?v:(v===''?'':Number(v));render();}
 function updMonthlyNote(v){finMonthly.note=v;render();}
 function computeMonthly(){
@@ -1999,7 +2071,9 @@ function viewFinance(){const F=computeFinance();
   h+=`</div><p class="muted" style="font-size:12px;margin-top:8px">Year-1 B2B/Promo revenue = <b>max(Won deals, planned floor)</b>. Won so far: B2B <b>${eur(b2bWonValue())}</b>, Promo <b>${eur(promoWonValue())}</b> (planned floor set by the "€/yr — Year 1" inputs). Aligned with the standalone Excel model.</p></div>`;
   // Launch-year monthly ramp
   const MM=computeMonthly();
+  const _ls=launchStart();
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Launch-year monthly ramp (assumptions)</p><p class="viewsub" style="margin:-6px 0 10px">`+esc(finMonthly.note)+`</p>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;padding:8px 10px;background:#F7F6FC;border-radius:8px"><label class="bb" style="margin:0">Launch month</label><select class="sel" onchange="setLaunchStart(this.value, ${_ls.yr})">`+MON3.map((mo,j)=>`<option value="${j+1}" ${_ls.mo===j+1?'selected':''}>${mo}</option>`).join('')+`</select><input class="num" style="width:74px" type="number" value="${_ls.yr}" onchange="setLaunchStart(${_ls.mo}, this.value)"><span class="muted" style="font-size:11.5px">— sets the 12 month labels below; the retail/B2B/promo weights are the ramp <i>shape</i> by position. Per-product seasonality (By Segment) re-aligns to the calendar automatically.</span></div>`;
   h+=`<div class="grid g4" style="margin-bottom:14px">
     <div class="card stat"><span class="k">Opening cash (after startup)</span><span class="v">${eur(MM.startCash)}</span><span class="sub">${eur(fin.equity)} equity − ${eur(F.startupTotal)} startup</span></div>
     <div class="card stat"><span class="k">Cash trough (Year 1)</span><span class="v" style="color:${MM.trough.cash>=0?'var(--st-inprogress)':'var(--st-blocked)'}">${eur(MM.trough.cash)}</span><span class="sub">in ${esc(MM.trough.m)} · vs €${Math.round(F.close[0]/1000)}k year-end</span></div>
@@ -2007,7 +2081,7 @@ function viewFinance(){const F=computeFinance();
     <div class="card stat"><span class="k">Year-1 revenue (check)</span><span class="v">${eur(MM.totRev)}</span><span class="sub">= annual model ${eur(F.rev[0])}</span></div></div>`;
   h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Month</th><th>Retail wt</th><th>B2B wt</th><th>Promo wt</th><th>Revenue €</th><th>Opex €</th><th>EBITDA €</th><th>Running cash €</th></tr></thead><tbody>`;
   finMonthly.months.forEach((x,i)=>{const r=MM.rows[i];const low=(i===MM.trough.idx);
-    h+=`<tr><td><input class="txt" style="width:74px" value="${escAttr(x.m)}" onchange="updMonthly(${i},'m',this.value)"></td>`+
+    h+=`<tr><td style="white-space:nowrap;font-weight:600">${esc(x.m)}</td>`+
     `<td><input class="num" style="width:48px" type="number" value="${x.r}" onchange="updMonthly(${i},'r',this.value)"></td>`+
     `<td><input class="num" style="width:48px" type="number" value="${x.b}" onchange="updMonthly(${i},'b',this.value)"></td>`+
     `<td><input class="num" style="width:48px" type="number" value="${x.p}" onchange="updMonthly(${i},'p',this.value)"></td>`+
