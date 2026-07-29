@@ -174,7 +174,9 @@
   .chkitem span{flex:1}
   .chksel{width:56px}
   .chksel.good{background:#D5F2E3;color:#0E7A54}.chksel.warn{background:#FBDDDD;color:#B42318}
-  .txa{width:100%;min-height:54px;border:1.5px solid #E4E7EF;border-radius:8px;padding:8px;font:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box}
+  .txa{width:100%;min-height:54px;max-height:60vh;field-sizing:content;border:1.5px solid #E4E7EF;border-radius:8px;padding:8px;font:inherit;font-size:14px;resize:vertical;box-sizing:border-box;overflow:auto}
+  /* auto-sizing free-text box: grows to fit its content so nothing is clipped */
+  .taf{width:100%;font:inherit;font-size:14px;line-height:1.45;padding:9px 10px;border:1px solid var(--line);border-radius:10px;min-height:52px;max-height:65vh;field-sizing:content;resize:vertical;color:var(--ink);box-sizing:border-box;overflow:auto}
   .prio{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
   .prio.High{background:#FBDDDD;color:#B42318}.prio.Med{background:#FFF3C4;color:#9A6A00}.prio.Low{background:#EEF0F4;color:#5A6178}
   table.grid2{width:100%;border-collapse:collapse;font-size:12.5px}
@@ -233,6 +235,7 @@
     input.num{min-width:88px;width:auto;text-align:left}
     input.txt{min-width:150px}
     input.num,input.txt,select.sel{padding:10px 10px;font-size:16px;height:auto}
+    .taf,.txa{font-size:16px;min-height:64px;padding:11px 12px}
     select.sel{min-width:120px}
     table.grid2 th,table.grid2 td{padding:10px 9px}
     /* keep the label column pinned while scrolling wide grids sideways */
@@ -678,7 +681,7 @@ function viewVision(){
  const firstProfit=profIdx>=0?('Year '+(profIdx+1)):'—';
  const lowCash=Math.min(F.close[0],F.close[1],F.close[2]);
  let h=`<h2 class="view">Vision & strategy</h2><p class="viewsub">The north star for HappyBCN — editable, and with the numbers wired live to the Finance tab so they never drift again. Draft &amp; sign off with Ilan.</p>`;
- h+=`<div class="card"><p class="sectiontitle">Vision — where we're going (3 years+)</p>`+taField(vision.statement,"updVision('statement',this.value)")+`<div style="margin-top:10px"><label class="bb">Short form</label><input class="txt" value="${escAttr(vision.shortForm)}" onchange="updVision('shortForm',this.value)"></div></div>`;
+ h+=`<div class="card"><p class="sectiontitle">Vision — where we're going (3 years+)</p>`+taField(vision.statement,"updVision('statement',this.value)")+`<div style="margin-top:10px"><label class="bb">Short form</label>`+taField(vision.shortForm,"updVision('shortForm',this.value)")+`</div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Mission &amp; promise</p><label class="bb">Mission</label>`+taField(vision.mission,"updVision('mission',this.value)")+`<div style="margin-top:10px"><label class="bb">Brand promise</label>`+taField(vision.promise,"updVision('promise',this.value)")+`</div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Positioning &amp; moat</p>`+taField(vision.positioning,"updVision('positioning',this.value)")+`</div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Brand story — why we exist</p>`+taField(vision.story,"updVision('story',this.value)")+`</div>`;
@@ -695,13 +698,13 @@ function viewVision(){
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Launch timing</p><label class="bb">Target — open into the Christmas 2026 gifting season</label>`+taField(vision.timingTarget,"updVision('timingTarget',this.value)")+`<div style="margin-top:10px"><label class="bb">Fallback</label>`+taField(vision.timingFallback,"updVision('timingFallback',this.value)")+`</div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Year-1 KPIs</p>`+taField(vision.kpis,"updVision('kpis',this.value)")+`</div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Key assumptions — what must be true</p>`;
- vision.assumptions.forEach((s,i)=>{h+=`<div class="brow" style="margin-bottom:6px"><input class="txt" value="${escAttr(s)}" onchange="updVStr('assumptions',${i},this.value)"><button class="rmv" onclick="rmVStr('assumptions',${i})">×</button></div>`;});
+ vision.assumptions.forEach((s,i)=>{h+=`<div class="brow" style="margin-bottom:6px;align-items:flex-start"><div style="flex:1">`+taField(s,`updVStr('assumptions',${i},this.value)`)+`</div><button class="rmv" onclick="rmVStr('assumptions',${i})">×</button></div>`;});
  h+=`<button class="addbtn" style="font-size:12px;padding:5px 10px" onclick="addVStr('assumptions')">+ add assumption</button></div>`;
- h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Risk register</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Risk</th><th>Mitigation</th><th></th></tr></thead><tbody>`;
- vision.risks.forEach((r,i)=>{h+=`<tr><td style="min-width:240px"><input class="txt" value="${escAttr(r.r)}" onchange="updVRisk(${i},'r',this.value)"></td><td style="min-width:300px"><input class="txt" value="${escAttr(r.m)}" onchange="updVRisk(${i},'m',this.value)"></td><td><button class="rmv" onclick="rmVRisk(${i})">×</button></td></tr>`;});
- h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addVRisk()">+ add risk</button></div></div>`;
+ h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Risk register</p>`;
+ vision.risks.forEach((r,i)=>{h+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-start"><div style="flex:1;min-width:220px"><label class="bb">Risk</label>`+taField(r.r,`updVRisk(${i},'r',this.value)`)+`</div><div style="flex:1;min-width:220px"><label class="bb">Mitigation</label>`+taField(r.m,`updVRisk(${i},'m',this.value)`)+`</div><button class="rmv" onclick="rmVRisk(${i})" style="margin-top:24px">×</button></div>`;});
+ h+=`<div class="addtask"><button class="addbtn" onclick="addVRisk()">+ add risk</button></div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Kill / pivot criteria — pre-committed</p><p class="muted" style="font-size:12px;margin:-4px 0 10px">Decide the triggers now, so scaling back or changing course is driven by evidence, not panic.</p>`;
- vision.killCriteria.forEach((s,i)=>{h+=`<div class="brow" style="margin-bottom:6px"><input class="txt" value="${escAttr(s)}" onchange="updVStr('killCriteria',${i},this.value)"><button class="rmv" onclick="rmVStr('killCriteria',${i})">×</button></div>`;});
+ vision.killCriteria.forEach((s,i)=>{h+=`<div class="brow" style="margin-bottom:6px;align-items:flex-start"><div style="flex:1">`+taField(s,`updVStr('killCriteria',${i},this.value)`)+`</div><button class="rmv" onclick="rmVStr('killCriteria',${i})">×</button></div>`;});
  h+=`<button class="addbtn" style="font-size:12px;padding:5px 10px" onclick="addVStr('killCriteria')">+ add criterion</button></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">5-year horizon — what this could become</p><p class="muted" style="font-size:12px;margin:-4px 0 12px">Beyond the Year-3 north star — earned, not assumed.</p>`;
  vision.horizon.forEach((v,i)=>{h+=`<div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-start"><div style="flex:1"><input class="txt" style="font-weight:700;margin-bottom:5px" value="${escAttr(v.h)}" onchange="updVisionItem('horizon',${i},'h',this.value)">`+taField(v.t,`updVisionItem('horizon',${i},'t',this.value)`)+`</div><button class="rmv" onclick="rmVisionItem('horizon',${i})">×</button></div>`;});
@@ -2024,7 +2027,7 @@ function rmAudience(i){brand.audiences.splice(i,1);render();}
 function updAsset(i,k,v){brand.assets[i][k]=v;render();}
 function addAsset(){brand.assets.push({item:"",status:"To do"});render();}
 function rmAsset(i){brand.assets.splice(i,1);render();}
-function taField(val,handler,ph){return `<textarea onchange="${handler}" placeholder="${escAttr(ph||'')}" style="width:100%;font:inherit;font-size:13px;line-height:1.45;padding:9px 10px;border:1px solid var(--line);border-radius:10px;min-height:56px;resize:vertical;color:var(--ink);box-sizing:border-box">${esc(val)}</textarea>`;}
+function taField(val,handler,ph){return `<textarea class="taf" onchange="${handler}" placeholder="${escAttr(ph||'')}">${esc(val)}</textarea>`;}
 function viewBrand(){
  let h=`<h2 class="view">Brand book</h2><p class="viewsub">The HappyNes (Turkey) brand as the base, adapted for Barcelona. Every field is editable — draft and refine with Ilan, then share for sign-off.</p>`;
  const two=(label,baseH,bcnH)=>`<div style="display:flex;flex-wrap:wrap;gap:16px"><div style="flex:1;min-width:260px"><label class="bb">Turkey base — ${label}</label>${baseH}</div><div style="flex:1;min-width:260px"><label class="bb" style="color:var(--coral-d)">Barcelona adaptation — ${label}</label>${bcnH}</div></div>`;
