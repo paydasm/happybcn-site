@@ -1065,7 +1065,7 @@ function promoCalcCard(){const c=pcalc();const col=segColor("Promotional");const
  h+=`<p class="muted" style="font-size:11.5px;margin-top:8px">Margin is per-unit (price − COGS) plus the one-off setup fee on the quote; it excludes design/artwork time and shipping, so keep a buffer. The setup fee should at least cover screens/tooling for the run. Confirm tier prices against the live HQ transfer cost before quoting a client.</p></div>`;
  return h;}
 
-function normalizeSegModels(s){s=s||{};if(typeof s.intro!=='string')s.intro=segModels.intro;if(!Array.isArray(s.priceLadder))s.priceLadder=segModels.priceLadder;if(typeof s.ladderNote!=='string')s.ladderNote=segModels.ladderNote;["retail","b2b","promo"].forEach(k=>{s[k]=Object.assign({offer:"",econ:"",terms:"",target:"",who:""},s[k]||segModels[k]);});if(typeof s.synergy!=='string')s.synergy=segModels.synergy;if(!s.retailMix||typeof s.retailMix!=='object'||!Array.isArray(s.retailMix.groups)){s.retailMix=segModels.retailMix;}else{if(typeof s.retailMix.transactions!=='number')s.retailMix.transactions=segModels.retailMix.transactions;if(typeof s.retailMix.note!=='string')s.retailMix.note=segModels.retailMix.note;}["b2bMix","promoMix"].forEach(k=>{if(!s[k]||typeof s[k]!=='object'||!Array.isArray(s[k].groups))s[k]=segModels[k];else if(typeof s[k].note!=='string')s[k].note=segModels[k].note;});if(!s.promoCatalogue||typeof s.promoCatalogue!=='object'||!Array.isArray(s.promoCatalogue.items))s.promoCatalogue=PROMO_CAT_SEED;else if(typeof s.promoCatalogue.note!=='string')s.promoCatalogue.note=PROMO_CAT_SEED.note;if(!s.promoCalc||!Array.isArray(s.promoCalc.products)||!s.promoCalc.products.length)s.promoCalc=JSON.parse(JSON.stringify(PROMO_CALC_SEED));return s;}
+function normalizeSegModels(s){s=s||{};if(typeof s.intro!=='string')s.intro=segModels.intro;if(!Array.isArray(s.priceLadder))s.priceLadder=segModels.priceLadder;if(typeof s.ladderNote!=='string')s.ladderNote=segModels.ladderNote;["retail","b2b","promo"].forEach(k=>{s[k]=Object.assign({offer:"",econ:"",terms:"",target:"",who:""},s[k]||segModels[k]);});if(typeof s.synergy!=='string')s.synergy=segModels.synergy;if(!s.retailMix||typeof s.retailMix!=='object'||!Array.isArray(s.retailMix.groups)){s.retailMix=segModels.retailMix;}else{if(typeof s.retailMix.transactions!=='number')s.retailMix.transactions=segModels.retailMix.transactions;if(typeof s.retailMix.note!=='string')s.retailMix.note=segModels.retailMix.note;}["b2bMix","promoMix"].forEach(k=>{if(!s[k]||typeof s[k]!=='object'||!Array.isArray(s[k].groups))s[k]=segModels[k];else if(typeof s[k].note!=='string')s[k].note=segModels[k].note;});if(!s.promoCatalogue||typeof s.promoCatalogue!=='object'||!Array.isArray(s.promoCatalogue.items))s.promoCatalogue=PROMO_CAT_SEED;else if(typeof s.promoCatalogue.note!=='string')s.promoCatalogue.note=PROMO_CAT_SEED.note;if(!s.promoCalc||!Array.isArray(s.promoCalc.products)||!s.promoCalc.products.length)s.promoCalc=JSON.parse(JSON.stringify(PROMO_CALC_SEED));if(!s.keyAcct||typeof s.keyAcct!=='object'||!Array.isArray(s.keyAcct.tiers)||!Array.isArray(s.keyAcct.targets)){s.keyAcct=JSON.parse(JSON.stringify(KEYACCT_SEED));}else{const d=KEYACCT_SEED;if(typeof s.keyAcct.intro!=='string')s.keyAcct.intro=d.intro;if(!s.keyAcct.build||typeof s.keyAcct.build!=='object')s.keyAcct.build=JSON.parse(JSON.stringify(d.build));if(!s.keyAcct.offer||typeof s.keyAcct.offer!=='object')s.keyAcct.offer=JSON.parse(JSON.stringify(d.offer));if(!Array.isArray(s.keyAcct.pricing))s.keyAcct.pricing=JSON.parse(JSON.stringify(d.pricing));if(s.keyAcct.ltvYrs==null)s.keyAcct.ltvYrs=d.ltvYrs;if(s.keyAcct.rampY1==null)s.keyAcct.rampY1=d.rampY1;}return s;}
 function updSM(seg,key,v){segModels[seg][key]=v;render();}
 function updMix(which,i,k,v){segModels[which].groups[i][k]=(k==='units'||k==='net'||k==='cogs')?(v===''?'':Number(v)):v;render();}
 function addMix(which){segModels[which].groups.push({group:"",units:"",net:"",cogs:""});render();}
@@ -1777,6 +1777,132 @@ function convFunnelCard(k){const P=PIPE[k],c=pipeConv(k),C=computeConv(k);const 
   h+=`<div style="margin-top:10px"><label class="bb">Notes / assumptions</label>`+taField(c.note,`updConv('${k}','note',this.value)`,k==='b2b'?"e.g. contact rate leans on warm hotel intros; sampling is the main drop-off":"e.g. quoting is fast but sampling lead-time loses event deals")+`</div>`;
   h+=`<p class="muted" style="font-size:12px;margin-top:8px">A planning lens — it does not overwrite Finance. Compare expected revenue <b>${eur(C.rev)}</b> with the Year-1 ${k==='b2b'?'B2B':'Promo'} floor in Finance (<b>${eur(k==='b2b'?(fin.b2b1||0):(fin.promo1||0))}</b>). If expected wins fall short of target, widen the top-of-funnel or lift the weakest stage rate — the funnel shows which stage is costing you most.</p>`;
   h+=`</div>`;return h;}
+/* ================= KEY ACCOUNTS (B2B high-value tier) ================= */
+const KEYACCT_SEED={
+  intro:"Key accounts are the few high-value B2B relationships worth managing one-by-one rather than selling to transactionally — museum & attraction shops, the department store, design hotels and flagship concept stores. The value isn't the opening order, it's the reorder relationship: a key account that reorders several times a year is worth many times its first invoice. This tiers the book, prices and packages an offer built for them, names the real Barcelona targets, and builds Year-1–3 B2B revenue bottom-up from those accounts.",
+  ltvYrs:3, rampY1:0.5,
+  tiers:[
+    {name:"Key (A)", def:"Named, individually managed. High order value + strong reorder + strategic brand halo (museum/attraction shops, El Corte Inglés, flagship hotels & concept stores).", open:1500, reord:900, rpy:5, ret:80},
+    {name:"Standard (B)", def:"Solid independent stockists — boutiques & gift shops — on the standard line sheet with light account care.", open:600, reord:350, rpy:2.5, ret:60},
+    {name:"Transactional (C)", def:"One-off / seasonal buyers; proforma only, no dedicated management.", open:350, reord:150, rpy:0.7, ret:35}
+  ],
+  build:{y1Key:3,y1Std:4,y2Key:6,y2Std:8,y3Key:9,y3Std:12},
+  offer:{
+    display:"Branded HappyNes counter display (free-standing or counter-top), placed sale-or-return for Key accounts and refreshed each capsule — owns the shelf and lowers their risk to say yes.",
+    capsule:"An exclusive or co-branded capsule per account — a museum-exhibition colourway, a hotel's palette, or a venue-specific trencadís charm — with a modest exclusivity window.",
+    terms:"Key accounts: net-30 after the first order, sale-or-return on the display range, priority replenishment (48–72h from stock), a named account owner, and a quarterly range review.",
+    volume:"Commitment tiers reward an annual volume commitment rather than a single big order — trading a few points of price for reorders and shelf space."
+  },
+  pricing:[
+    {tier:"Standard wholesale", disc:"list", moq:"6 / style", terms:"Proforma / 50% deposit", note:"Baseline ≈ 50% of RRP (~45% margin)"},
+    {tier:"Key account (committed)", disc:"−5 to −8%", moq:"annual commitment", terms:"Net-30, SOR on display", note:"Lower unit price traded for reorder commitment + shelf space"},
+    {tier:"Co-branded / exclusive capsule", disc:"project-priced", moq:"per capsule", terms:"50% deposit", note:"Bespoke colourway; priced per project incl. setup"},
+    {tier:"Consignment (display)", disc:"margin-share", moq:"display kit", terms:"Sale-or-return, monthly settle", note:"We own stock on shelf; account pays on sell-through"}
+  ],
+  targets:[
+    {id:"ka1", name:"El Corte Inglés — Pl. Catalunya", type:"Department store", tier:"Key (A)", hook:"Spanish/local-design gifting corner; huge local + tourist flow. Route in via the vendor/buyer portal.", valYr:4500, status:"Prospect", next:"Find the accessories/gifts buyer"},
+    {id:"ka2", name:"Casa Batlló — shop", type:"Attraction shop", tier:"Key (A)", hook:"Gaudí trencadís mosaic = exact brand-identity match; enormous footfall. Trencadís capsule, exclusive.", valYr:5000, status:"Prospect", next:"Contact retail/licensing team"},
+    {id:"ka3", name:"La Pedrera (Casa Milà) — shop", type:"Attraction shop", tier:"Key (A)", hook:"Gaudí/trencadís fit; high tourist footfall.", valYr:4000, status:"Prospect", next:"Contact shop buyer"},
+    {id:"ka4", name:"Fundació Joan Miró — shop", type:"Museum shop", tier:"Key (A)", hook:"Miró primary-colour palette = perfect colour fit. Miró-colourway charm capsule.", valYr:3000, status:"Prospect", next:"Email shop manager"},
+    {id:"ka5", name:"MACBA Store", type:"Museum shop", tier:"Key (A)", hook:"Design-led contemporary audience; co-branded exhibition capsule.", valYr:3000, status:"Prospect", next:"Approach store buyer"},
+    {id:"ka6", name:"Museu Picasso — shop", type:"Museum shop", tier:"Key (A)", hook:"Iconic, high footfall; Barcelona-art capsule.", valYr:2500, status:"Prospect", next:"Contact retail dept"},
+    {id:"ka7", name:"MNAC — store", type:"Museum shop", tier:"Key (A)", hook:"Catalan-art palette capsule; strong gift retail.", valYr:2500, status:"Prospect", next:"Email store team"},
+    {id:"ka8", name:"Nuovum", type:"Concept store", tier:"Key (A)", hook:"Local-design curation — exact brand fit; warm target already on the list.", valYr:1800, status:"Contacted", next:"Book a range meeting"},
+    {id:"ka9", name:"Casa Bonay", type:"Design hotel", tier:"Key (A)", hook:"Curated lifestyle-retail concept, design-forward guests; co-branded welcome charm.", valYr:1500, status:"Prospect", next:"Contact retail/partnerships"},
+    {id:"ka10", name:"Moco Museum — shop", type:"Museum shop", tier:"Standard (B)", hook:"Young, contemporary, very high footfall.", valYr:2000, status:"Prospect", next:"Approach shop buyer"},
+    {id:"ka11", name:"CCCB — store", type:"Museum shop", tier:"Standard (B)", hook:"Design/urban-culture crowd.", valYr:1500, status:"Prospect", next:"Email store"},
+    {id:"ka12", name:"Cotton House Hotel (Autograph)", type:"Design hotel", tier:"Standard (B)", hook:"Boutique gifting, textile heritage.", valYr:1200, status:"Prospect", next:"Contact concierge/retail"},
+    {id:"ka13", name:"Ivori", type:"Concept boutique", tier:"Standard (B)", hook:"Born accessories boutique, female-skew.", valYr:900, status:"Prospect", next:"Walk-in with samples"}
+  ]
+};
+let _kaid=14;
+function ka(){if(!segModels.keyAcct||typeof segModels.keyAcct!=='object'||!Array.isArray(segModels.keyAcct.tiers)||!Array.isArray(segModels.keyAcct.targets))segModels.keyAcct=JSON.parse(JSON.stringify(KEYACCT_SEED));return segModels.keyAcct;}
+function kaAnnual(t){return (Number(t.reord)||0)*(Number(t.rpy)||0);}
+function kaFirst(t,ramp){return (Number(t.open)||0)+kaAnnual(t)*ramp;}
+function kaLTV(t,yrs,ramp){const a=kaAnnual(t),r=(Number(t.ret)||0)/100;let v=kaFirst(t,ramp);for(let y=2;y<=yrs;y++)v+=a*Math.pow(r,y-1);return v;}
+function kaBuild(){const m=ka();const K=m.tiers[0],S=m.tiers[1];const ramp=Number(m.rampY1)||0.5;const b=m.build;
+  const y1=(Number(b.y1Key)||0)*kaFirst(K,ramp)+(Number(b.y1Std)||0)*kaFirst(S,ramp);
+  const y2=(Number(b.y2Key)||0)*kaAnnual(K)+(Number(b.y2Std)||0)*kaAnnual(S);
+  const y3=(Number(b.y3Key)||0)*kaAnnual(K)+(Number(b.y3Std)||0)*kaAnnual(S);
+  return {y1,y2,y3};}
+function updKA(f,v){const m=ka();m[f]=(f==='intro')?v:(v===''?'':Number(v));render();}
+function updKATier(i,f,v){const m=ka();m.tiers[i][f]=(f==='name'||f==='def')?v:(v===''?'':Number(v));render();}
+function updKAOffer(f,v){ka().offer[f]=v;render();}
+function updKAPricing(i,f,v){ka().pricing[i][f]=v;render();}
+function addKAPricing(){ka().pricing.push({tier:"",disc:"",moq:"",terms:"",note:""});render();}
+function rmKAPricing(i){ka().pricing.splice(i,1);render();}
+function updKABuild(f,v){ka().build[f]=(v===''?'':Number(v));render();}
+function updKATarget(id,f,v){const t=ka().targets.find(x=>x.id===id);if(t){t[f]=(f==='valYr')?(v===''?'':Number(v)):v;render();}}
+function addKATarget(){ka().targets.push({id:"ka"+(_kaid++),name:"",type:"",tier:"Standard (B)",hook:"",valYr:"",status:"Prospect",next:""});render();}
+function rmKATarget(id){const m=ka();m.targets=m.targets.filter(x=>x.id!==id);render();}
+function keyAccountCard(){
+  const m=ka();const col=segColor('B2B');const yrs=Number(m.ltvYrs)||3, ramp=Number(m.rampY1)||0.5;
+  const tierNames=m.tiers.map(t=>t.name);
+  const B=kaBuild();
+  const finB2B=(typeof computeFinance==='function')?computeFinance().b2b:[0,0,0];
+  // named-target roll-up
+  const namedKey=m.targets.filter(t=>t.tier===tierNames[0]);
+  const namedStd=m.targets.filter(t=>t.tier===tierNames[1]);
+  const namedVal=m.targets.reduce((a,t)=>a+(Number(t.valYr)||0),0);
+  let h=`<div class="card" style="margin-top:16px;border-top:4px solid ${col}"><p class="sectiontitle" style="color:${col}">Key accounts <span class="badge">high-value B2B tier</span></p>`;
+  h+=`<div style="margin:-4px 0 12px">`+taField(m.intro,"updKA('intro',this.value)")+`</div>`;
+  // headline stats
+  h+=`<div class="grid g4" style="margin-bottom:16px">
+    <div class="card stat"><span class="k">Named targets</span><span class="v">${m.targets.length}</span><span class="sub">${namedKey.length} Key · ${namedStd.length} Standard</span></div>
+    <div class="card stat"><span class="k">Key-account LTV (${yrs}-yr)</span><span class="v">${eur(kaLTV(m.tiers[0],yrs,ramp))}</span><span class="sub">vs ${eur(kaLTV(m.tiers[1],yrs,ramp))} Standard</span></div>
+    <div class="card stat"><span class="k">Y1 key-account revenue</span><span class="v">${eur(B.y1)}</span><span class="sub">bottom-up from the build</span></div>
+    <div class="card stat"><span class="k">Y3 key-account revenue</span><span class="v">${eur(B.y3)}</span><span class="sub">${eur(namedVal)} named-pipeline value</span></div></div>`;
+  // 1) Tiering + reorder/LTV economics
+  h+=`<p class="sectiontitle" style="margin:6px 0 4px;font-size:13px">1 · Tiers &amp; reorder economics — the LTV is the reorder, not the opening order</p>`;
+  h+=`<p class="muted" style="font-size:11.5px;margin:0 0 8px">Edit any cell. <b>Annual value</b> = reorder € × reorders/yr; <b>first-year</b> adds the opening order and ramps the reorders (×${ramp}); <b>${yrs}-yr LTV</b> compounds the annual value by the retention rate. This is why one Key account is worth a handful of Standard ones.</p>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Tier</th><th>Opening €</th><th>Reorder €</th><th>Reorders/yr</th><th>Retention %</th><th>Annual €</th><th>First-yr €</th><th>${yrs}-yr LTV €</th></tr></thead><tbody>`;
+  m.tiers.forEach((t,i)=>{h+=`<tr><td style="min-width:120px"><input class="txt" style="min-width:110px" value="${escAttr(t.name)}" onchange="updKATier(${i},'name',this.value)"></td>`+
+    `<td><input class="num" style="width:64px" type="number" value="${escAttr(t.open)}" onchange="updKATier(${i},'open',this.value)"></td>`+
+    `<td><input class="num" style="width:64px" type="number" value="${escAttr(t.reord)}" onchange="updKATier(${i},'reord',this.value)"></td>`+
+    `<td><input class="num" style="width:56px" type="number" step="0.1" value="${escAttr(t.rpy)}" onchange="updKATier(${i},'rpy',this.value)"></td>`+
+    `<td><input class="num" style="width:56px" type="number" value="${escAttr(t.ret)}" onchange="updKATier(${i},'ret',this.value)"></td>`+
+    `<td style="font-weight:700">${eur(kaAnnual(t))}</td><td>${eur(kaFirst(t,ramp))}</td><td style="font-weight:800;color:${col}">${eur(kaLTV(t,yrs,ramp))}</td></tr>`+
+    `<tr><td colspan="8" class="muted" style="white-space:normal;font-weight:400;font-size:12px;padding-top:0">${esc(t.def)}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px"><div class="setrow"><label style="min-width:0">LTV horizon (yrs)</label><input class="num" style="width:54px" type="number" value="${m.ltvYrs}" onchange="updKA('ltvYrs',this.value)"></div><div class="setrow"><label style="min-width:0">Y1 reorder ramp ×</label><input class="num" style="width:54px" type="number" step="0.05" value="${m.rampY1}" onchange="updKA('rampY1',this.value)"></div></div>`;
+  // 2) Offer & pricing
+  h+=`<p class="sectiontitle" style="margin:18px 0 4px;font-size:13px">2 · The key-account offer &amp; pricing — different from the standard line sheet</p>`;
+  h+=`<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">`+
+    [["display","Counter display"],["capsule","Exclusive / co-branded capsule"],["terms","Terms & service"],["volume","Volume / commitment"]].map(([f,l])=>`<div><label class="bb">${l}</label>`+taField(m.offer[f],`updKAOffer('${f}',this.value)`)+`</div>`).join('')+`</div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Pricing tier</th><th>Discount / basis</th><th>MOQ</th><th>Terms</th><th>Note</th><th></th></tr></thead><tbody>`;
+  m.pricing.forEach((p,i)=>{h+=`<tr><td><input class="txt" style="min-width:130px" value="${escAttr(p.tier)}" onchange="updKAPricing(${i},'tier',this.value)"></td>`+
+    `<td><input class="txt" style="width:90px" value="${escAttr(p.disc)}" onchange="updKAPricing(${i},'disc',this.value)"></td>`+
+    `<td><input class="txt" style="width:110px" value="${escAttr(p.moq)}" onchange="updKAPricing(${i},'moq',this.value)"></td>`+
+    `<td><input class="txt" style="width:130px" value="${escAttr(p.terms)}" onchange="updKAPricing(${i},'terms',this.value)"></td>`+
+    `<td><input class="txt" style="min-width:180px" value="${escAttr(p.note)}" onchange="updKAPricing(${i},'note',this.value)"></td>`+
+    `<td><button class="rmv" onclick="rmKAPricing(${i})">×</button></td></tr>`;});
+  h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addKAPricing()">+ pricing tier</button></div>`;
+  // 3) Named targets + account plans
+  h+=`<p class="sectiontitle" style="margin:18px 0 4px;font-size:13px">3 · Named Barcelona targets &amp; account plans</p>`;
+  h+=`<p class="muted" style="font-size:11.5px;margin:0 0 8px">Real, currently-operating targets across museum/attraction shops, the department store, design hotels and concept stores. Set each one's tier, estimated annual value, status and next step. These are who fills the account counts in the revenue build below.</p>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Account</th><th>Type</th><th>Tier</th><th>Est €/yr</th><th>Hook / tailored offer</th><th>Status</th><th>Next step</th><th></th></tr></thead><tbody>`;
+  m.targets.forEach(t=>{h+=`<tr><td style="min-width:150px"><input class="txt" style="min-width:140px" value="${escAttr(t.name)}" onchange="updKATarget('${t.id}','name',this.value)"></td>`+
+    `<td><input class="txt" style="width:100px" value="${escAttr(t.type)}" onchange="updKATarget('${t.id}','type',this.value)"></td>`+
+    `<td>${selOpts(tierNames,t.tier,`updKATarget('${t.id}','tier',this.value)`)}</td>`+
+    `<td><input class="num" style="width:66px" type="number" value="${escAttr(t.valYr)}" onchange="updKATarget('${t.id}','valYr',this.value)"></td>`+
+    `<td><input class="txt" style="min-width:220px" value="${escAttr(t.hook)}" onchange="updKATarget('${t.id}','hook',this.value)"></td>`+
+    `<td>${selOpts(PIPE.b2b.stages,t.status,`updKATarget('${t.id}','status',this.value)`)}</td>`+
+    `<td><input class="txt" style="min-width:130px" value="${escAttr(t.next)}" onchange="updKATarget('${t.id}','next',this.value)"></td>`+
+    `<td><button class="rmv" onclick="rmKATarget('${t.id}')">×</button></td></tr>`;});
+  h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addKATarget()">+ add target</button></div>`;
+  // 4) Revenue build
+  h+=`<p class="sectiontitle" style="margin:18px 0 4px;font-size:13px">4 · Revenue build — bottom-up, feeds the B2B line in Finance</p>`;
+  h+=`<p class="muted" style="font-size:11.5px;margin:0 0 8px">Set the number of <b>active Key and Standard accounts</b> each year; revenue = accounts × tier value (Year 1 at the first-year value, later years at the steady annual value). This is a named-account build rather than a flat target — compare it against the current Finance B2B line and push it in if you prefer this basis.</p>`;
+  const bRows=[["Year 1","y1Key","y1Std",B.y1,finB2B[0]],["Year 2","y2Key","y2Std",B.y2,finB2B[1]],["Year 3","y3Key","y3Std",B.y3,finB2B[2]]];
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Year</th><th>Key accounts</th><th>Standard accounts</th><th>Key-account revenue</th><th>Finance B2B line</th><th>Δ</th></tr></thead><tbody>`;
+  bRows.forEach(([lab,kf,sf,rev,finv])=>{const d=rev-finv;h+=`<tr><td><b>${lab}</b></td>`+
+    `<td><input class="num" style="width:56px" type="number" value="${escAttr(ka().build[kf])}" onchange="updKABuild('${kf}',this.value)"></td>`+
+    `<td><input class="num" style="width:56px" type="number" value="${escAttr(ka().build[sf])}" onchange="updKABuild('${sf}',this.value)"></td>`+
+    `<td style="font-weight:700">${eur(rev)}</td><td class="muted">${eur(finv)}</td>`+
+    `<td style="color:${Math.abs(d)<1?'var(--muted)':(d>=0?'var(--st-done)':'var(--st-blocked)')}">${d>=0?'+':''}${eur(d)}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:8px">Named pipeline totals <b>${eur(namedVal)}/yr</b> at full value across ${m.targets.length} targets (${namedKey.length} Key). The Year-1 build assumes <b>${ka().build.y1Key} Key + ${ka().build.y1Std} Standard</b> actually active — a conservative slice of the named list, reflecting that most targets are still Prospects. The <b>Δ</b> column is this bottom-up build minus the current Finance B2B figure; if you want Finance driven by named accounts, set the Finance B2B Year-1 floor to ${eur(B.y1)}.</p>`;
+  h+=`</div>`;return h;}
 function viewPipe(k){
   const P=PIPE[k];const names=team.filter(m=>m.id!=='un').map(m=>m.name);
   let h=`<h2 class="view">${P.label} pipeline</h2><p class="viewsub">Score each ${P.entity} on 5 fit criteria → weighted Fit and auto Priority. Won deals feed the segment roll-up and Year-1 revenue in Finance.</p>`;
@@ -1801,6 +1927,7 @@ function viewPipe(k){
   const won=P.rows.filter(r=>r.stage==='Won').length,openV=P.rows.filter(r=>r.stage!=='Won'&&r.stage!=='Lost').reduce((a,r)=>a+(Number(r.value)||0),0),high=P.rows.filter(r=>pipePriority(pipeFit(r,P.settings.weights),r.value,P.settings)==='High').length;
   h+=`<div class="legend" style="margin-top:12px;font-size:13px"><span><b>${P.rows.length}</b> ${P.entity}s</span><span>⭐ <b>${P.rows.filter(r=>r.wave).length}</b> first wave</span><span>🔴 <b>${high}</b> high priority</span><span><b>${eur(openV)}</b> open pipeline</span><span>✅ <b>${won}</b> won</span></div></div>`;
   h+=convFunnelCard(k);
+  if(k==='b2b') h+=keyAccountCard();
   return h;
 }
 
