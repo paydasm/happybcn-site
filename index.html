@@ -155,7 +155,7 @@
   .subwrap{border-left:2px solid #E0D8F5;margin-left:8px;padding:6px 0 2px 14px}
   .sub-n{background:#EDE9FB;color:#6C4BD8}
   /* modules: inputs, tables, flags */
-  input.num{width:82px;min-width:66px;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right}
+  input.num{width:82px;min-width:72px;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right}
   input.txt{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:100%;min-width:130px;box-sizing:border-box}
   select.sel{font:inherit;font-size:13.5px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff;cursor:pointer;min-width:66px;max-width:100%;box-sizing:border-box}
   .flag{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
@@ -230,8 +230,11 @@
     table.grid2 th,table.grid2 td{padding:9px 8px}
     .setrow{width:100%}
     .setrow label{min-width:130px;flex:1}
-    input.num{min-width:76px}
-    input.num,input.txt,select.sel{padding:9px 9px;font-size:16px}
+    input.num{min-width:88px;width:auto;text-align:left}
+    input.txt{min-width:150px}
+    input.num,input.txt,select.sel{padding:10px 10px;font-size:16px;height:auto}
+    select.sel{min-width:120px}
+    table.grid2 th,table.grid2 td{padding:10px 9px}
     /* keep the label column pinned while scrolling wide grids sideways */
     table.grid2 td:first-child,table.grid2 th:first-child{position:sticky;left:0;background:#fff;box-shadow:2px 0 4px rgba(29,34,51,.04)}
     table.grid2 thead th:first-child{background:#1D2233}
@@ -1301,10 +1304,14 @@ function streetKPI(s){
   const blend=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);
   const hrs=(s.hrs!=null&&s.hrs!=='')?Number(s.hrs):(locSettings.opHours??10);
   const F=funnelRates(s.stype||''); const am=audienceMix(s);
+  // per-street overrides: edit the capture steps directly in the ranking table; blank = type-derived default
+  const ov=(v,def)=>(v!=null&&v!=='')?Number(v)/100:def;
+  const wR2=ov(s.oW,F.w), sR2=ov(s.oL,F.s), eR2=ov(s.oE,F.e);
+  const cap=wR2*sR2*eR2;
   const buyEff=buyBase()*am.buyMult;                             // entry→buy = browse × close, audience-weighted
-  const perDay=blend*6*hrs, entr=perDay*F.cap, tx=entr*buyEff;   // footfall → capture → buy
+  const perDay=blend*6*hrs, entr=perDay*cap, tx=entr*buyEff;     // footfall → capture → buy
   const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 passers
-  return {perDay,entr,tx,cap:F.cap,w:F.w,s:F.s,e:F.e,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
+  return {perDay,entr,tx,cap,w:wR2,s:sR2,e:eR2,dW:F.w,dS:F.s,dE:F.e,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
 }
 /* ---- Street ranking leaderboard: streets ordered by modeled footfall→sales ---- */
 function streetRankCard(){
@@ -1321,7 +1328,7 @@ function streetRankCard(){
   const trap=byFoot.slice(0,topFootN).filter(o=>o.k.vsPlan<0.85).map(o=>o.s.name);
   const tier=v=>v>=1?['ok','clears plan']:v>=0.7?['review','near plan']:['elim','below plan'];
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street ranking — footfall → sales <span class="badge">the decision layer</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The capture is broken into its consumer-behaviour steps (<b>① Notice → ② Look → ③ Enter</b>); edit the assumptions below and the whole ranking re-sorts live. <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The capture is broken into its consumer-behaviour steps (<b>① Notice → ② Look → ③ Enter</b>), and <b>the table itself is editable</b>: change any street's <b>Type</b> or type a number into its <b>①②③</b> cells to override that street (blank = the street-type default, shown as the faint placeholder), or edit the global rates in the strip below — the ranking re-sorts live either way. Footfall is edited in the streets table further down. <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
   // editable global assumptions — partners can play with these
   h+=`<div style="background:#F7F6FC;border-radius:8px;padding:10px 12px;margin:0 0 12px"><p class="muted" style="font-size:11.5px;margin:0 0 7px"><b>Capture &amp; conversion assumptions</b> — edit any rate and the ranking recomputes instantly. Capture = ① × ② × ③ (then re-weighted by each street's type); buy = ④ × ⑤. Per-type multipliers &amp; audience live in the Footfall model card below.</p><div style="display:flex;flex-wrap:wrap;gap:14px">`+[["windowRate","① Notices %"],["stopRate","② Looks %"],["entryRate","③ Enters %"],["browseRate","④ Browses %"],["closeRate","⑤ Buys %"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${esc(l)}</label><input class="num" style="width:58px" type="number" step="any" value="${locSettings[k]??''}" onchange="updLocSetting('${k}',this.value)"></div>`).join('')+`</div></div>`;
   h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th></tr></thead><tbody>`;
@@ -1331,11 +1338,11 @@ function streetRankCard(){
     h+=`<tr><td><b>${i+1}</b></td>`+
     `<td style="min-width:150px">${esc(s.name||'—')}${trapFlag}</td>`+
     `<td class="muted">${esc(s.area||'')}</td>`+
-    `<td>${esc((STYPE[s.stype||'']||STYPE['']).label)}</td>`+
+    `<td><select class="sel" onchange="updStreet('${s.id}','stype',this.value)">${STYPE_KEYS.map(t=>`<option value="${t}" ${((s.stype||'')===t)?'selected':''}>${esc(STYPE[t].label)}</option>`).join('')}</select></td>`+
     `<td>${num(k.perDay)}</td>`+
-    `<td class="muted">${(k.w*100).toFixed(0)}%</td>`+
-    `<td class="muted">${(k.s*100).toFixed(1)}%</td>`+
-    `<td class="muted">${(k.e*100).toFixed(0)}%</td>`+
+    `<td><input class="num" type="number" placeholder="${(k.dW*100).toFixed(0)}" value="${escAttr(s.oW)}" onchange="updStreet('${s.id}','oW',this.value)"></td>`+
+    `<td><input class="num" type="number" placeholder="${(k.dS*100).toFixed(1)}" value="${escAttr(s.oL)}" onchange="updStreet('${s.id}','oL',this.value)"></td>`+
+    `<td><input class="num" type="number" placeholder="${(k.dE*100).toFixed(0)}" value="${escAttr(s.oE)}" onchange="updStreet('${s.id}','oE',this.value)"></td>`+
     `<td style="font-weight:700">${(k.cap*100).toFixed(2)}%</td>`+
     `<td style="font-weight:700">${k.tx.toFixed(1)}</td>`+
     `<td style="white-space:nowrap"><span class="flag ${tc}">${Math.round(k.vsPlan*100)}%</span> <span class="muted" style="font-size:11px">${tl}</span></td>`+
