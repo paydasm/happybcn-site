@@ -536,7 +536,7 @@ function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">"
 
 /* ============================ RENDER ============================ */
 function renderTabs(){
-  const tabs=[["summary","Summary"],["vision","Vision"],["dashboard","Dashboard"],["roadmap","Roadmap"],["review","Review"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
+  const tabs=[["summary","Summary"],["vision","Vision"],["dashboard","Dashboard"],["roadmap","Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
   $("#tabbar").innerHTML = tabs.map(([id,label])=>
     `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("");
 }
