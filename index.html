@@ -536,7 +536,7 @@ function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">"
 
 /* ============================ RENDER ============================ */
 function renderTabs(){
-  const tabs=[["summary","Summary"],["vision","Vision"],["dashboard","Dashboard"],["roadmap","Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
+  const tabs=[["summary","Summary"],["vision","Vision"],["dashboard","Dashboard & Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
   $("#tabbar").innerHTML = tabs.map(([id,label])=>
     `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("");
 }
@@ -808,9 +808,11 @@ function viewDashboard(){
     });
     html+=`</div>`;
   }
+  // integrated: the full roadmap follows the overview in the same tab
+  html+=`<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:20px"></div>`+viewRoadmap();
   return html;
 }
-function jumpStage(sid){openStages.add(sid);setView("roadmap");setTimeout(()=>{const el=document.getElementById("st_"+sid);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
+function jumpStage(sid){openStages.add(sid);setView("dashboard");setTimeout(()=>{const el=document.getElementById("st_"+sid);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}
 
 /* ---------- Roadmap ---------- */
 function viewRoadmap(){
