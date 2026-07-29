@@ -614,7 +614,7 @@ function viewSummary(){
    <div class="card stat"><span class="k">Break-even</span><span class="v">${eur(F.be[0])}</span><span class="sub">revenue / year</span></div>
    <div class="card stat"><span class="k">Roadmap built</span><span class="v">8/8</span><span class="sub">stages tooled · ${road}% tasks done</span></div></div>`;
  const _ls=launchStart();
- h+=`<div class="card" style="margin-top:16px;border-top:4px solid var(--coral-d,#E1477E)"><p class="sectiontitle">Launch date</p><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px"><label class="bb" style="margin:0">Target opening</label><select class="sel" onchange="setLaunchStart(this.value, ${_ls.yr})">`+MON3.map((mo,j)=>`<option value="${j+1}" ${_ls.mo===j+1?'selected':''}>${mo}</option>`).join('')+`</select><input class="num" style="width:80px" type="number" value="${_ls.yr}" onchange="setLaunchStart(${_ls.mo}, this.value)"><span class="muted" style="font-size:12px">— sets the launch-year calendar. The month-by-month revenue ramp, per-product seasonality and the timing of the Year-1 cash trough all follow automatically; the annual Year-1/2/3 totals are a full first operating year, so they stay put.</span></div></div>`;
+ h+=`<div class="card" style="margin-top:16px;border-top:4px solid var(--coral-d,#E1477E)"><p class="sectiontitle">Launch date</p><div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px"><label class="bb" style="margin:0">Target opening</label><select class="sel" onchange="setLaunchStart(this.value, ${_ls.yr})">`+MON3.map((mo,j)=>`<option value="${j+1}" ${_ls.mo===j+1?'selected':''}>${mo}</option>`).join('')+`</select><input class="num" style="width:80px" type="number" value="${_ls.yr}" onchange="setLaunchStart(${_ls.mo}, this.value)"><span class="muted" style="font-size:12px">— sets the launch-year calendar. The month-by-month ramp, per-product seasonality and cash-trough timing all follow; and because a new store ramps up while the calendar has high &amp; low seasons, <b>Year-1 sales now flex with the open month</b> (${(launchTimingFactor()*100).toFixed(1)}% of the ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][(Number(finMonthly.refMo)||11)-1]} plan baseline). Years 2–3 are full mature years and stay on plan. Full by-month comparison in <b>Finance → Launch-timing sensitivity</b>.</span></div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Financial plan (3 years, net of IVA)</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>€</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>`+
   [["Revenue",F.rev],["Gross profit",F.gp],["Net income",F.ni],["Closing cash",F.close]].map(x=>`<tr><td style="font-weight:700">${x[0]}</td>`+x[1].map(v=>`<td>${eur(v)}</td>`).join("")+`</tr>`).join("")+
   `</tbody></table></div><p class="muted" style="font-size:12px;margin-top:6px">Self-funded: ${eur(fin.equity)} partner equity covers the ${eur(F.startupTotal)} of startup cost plus the early operating losses; lowest cash on plan is ${eur(lowCash)}. Reconciled with the standalone Excel model.</p></div>`;
@@ -1117,6 +1117,49 @@ function setLaunchStart(mo,yr){
   M.forEach((m,i)=>{const w=byCal[(nm-1+i)%12];if(w){m.r=w.r;m.b=w.b;m.p=w.p;}});
   regenMonthLabels();render();}
 function calIdxArr(){const s=launchStart();return (finMonthly.months||[]).map((_,i)=>(s.mo-1+i)%12);}
+/* Launch-timing factor: a store opens below run-rate and ramps up (position-based), while the
+   calendar has its own high/low seasons. The launch year's total flexes with WHEN the ramp-up
+   months land relative to the seasons. Ramp curve & seasonal index are % (100 = full / average);
+   the seasonal index averages ~100 over 12 months, so a full mature year is unaffected — only the
+   launch year, scored relative to a reference "planned" open month, moves. */
+function rampCurveArr(){const a=finMonthly.rampCurve||[];return Array.from({length:12},(_,i)=>{const v=Number(a[i]);return isNaN(v)?100:v;});}
+function seasIndexArr(){const a=finMonthly.seasIndex||[];return Array.from({length:12},(_,i)=>{const v=Number(a[i]);return isNaN(v)?100:v;});}
+function launchAlign(startMo){const rc=rampCurveArr(),si=seasIndexArr();let s=0;for(let i=0;i<12;i++){s+=(rc[i]/100)*(si[(((startMo-1+i)%12)+12)%12]/100);}return s;}
+function launchTimingFactor(startMo){const s=(startMo==null)?launchStart().mo:startMo;const ref=Number(finMonthly.refMo)||11;const a0=launchAlign(ref);return a0>0?launchAlign(s)/a0:1;}
+function updRampCurve(i,v){if(!Array.isArray(finMonthly.rampCurve))finMonthly.rampCurve=rampCurveArr();finMonthly.rampCurve[i]=(v===''?'':Number(v));render();}
+function updSeasIndex(i,v){if(!Array.isArray(finMonthly.seasIndex))finMonthly.seasIndex=seasIndexArr();finMonthly.seasIndex[i]=(v===''?'':Number(v));render();}
+function updRefMo(v){finMonthly.refMo=Number(v)||11;render();}
+function launchTimingCard(){
+  const MONF=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const f=fin, refMo=Number(finMonthly.refMo)||11, cur=launchStart().mo;
+  const F=computeFinance();
+  const b0=F.b2b[0], p0=F.promo[0];
+  const storeRef=f.atv*f.tx1*f.days*f.smo1, onlineRef=f.ord1*f.aov*f.omo1;   // tf = 1 base
+  const rows=MONF.map((m,j)=>{const mo=j+1;const tf=launchTimingFactor(mo);return {mo,label:m,tf,rev:(storeRef+onlineRef)*tf+b0+p0};});
+  const best=rows.reduce((a,r)=>r.rev>a.rev?r:a,rows[0]);
+  const worst=rows.reduce((a,r)=>r.rev<a.rev?r:a,rows[0]);
+  const maxRev=Math.max(...rows.map(r=>r.rev)), minRev=Math.min(...rows.map(r=>r.rev)), span=(maxRev-minRev)||1;
+  const curTF=launchTimingFactor(cur), col='var(--brand,#7A5AF8)';
+  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Launch-timing sensitivity — ramp-up × season</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">A new store opens below run-rate and <b>ramps up</b> over its first months; the calendar has its own <b>high &amp; low seasons</b>. First-year sales depend on <i>which</i> ramp-up months land on <i>which</i> seasons — so opening just before a peak, or ramping through a dead season, matters. This scores every possible opening month against your reference plan month (<b>${MONF[refMo-1]}</b>). The seasonal index averages 100 over a year, so Years 2–3 (and any full mature year) are unaffected; only <b>Year 1</b> flexes. Your current open (<b>${MONF[cur-1]}</b>) sits at <b>${(curTF*100).toFixed(1)}%</b> vs the plan baseline.</p>`;
+  h+=`<div class="grid g4" style="margin-bottom:14px">
+    <div class="card stat"><span class="k">Current timing factor</span><span class="v">${(curTF*100).toFixed(1)}%</span><span class="sub">${MONF[cur-1]} vs ${MONF[refMo-1]} plan</span></div>
+    <div class="card stat"><span class="k">Best month to open</span><span class="v">${best.label}</span><span class="sub">${eur(best.rev)} Y1 · ${(best.tf*100).toFixed(0)}%</span></div>
+    <div class="card stat"><span class="k">Worst month</span><span class="v">${worst.label}</span><span class="sub">${eur(worst.rev)} Y1 · ${(worst.tf*100).toFixed(0)}%</span></div>
+    <div class="card stat"><span class="k">Best vs worst swing</span><span class="v">${eur(best.rev-worst.rev)}</span><span class="sub">${(((best.rev/worst.rev)-1)*100).toFixed(1)}% of Year-1</span></div></div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Open month</th><th>Timing factor</th><th>Year-1 revenue</th><th></th></tr></thead><tbody>`;
+  rows.forEach(r=>{const isCur=r.mo===cur,isBest=r.mo===best.mo;const w=10+(r.rev-minRev)/span*90;
+    h+=`<tr${isCur?' style="background:#F0EEF9"':''}><td style="font-weight:${isCur?'800':'600'}">${r.label}${isCur?' ◂ current':(isBest?' <span class="muted" style="font-weight:600">best</span>':'')}</td>`+
+    `<td>${(r.tf*100).toFixed(1)}%</td><td style="font-weight:700">${eur(r.rev)}</td>`+
+    `<td><div style="width:170px;height:8px;background:#EEE;border-radius:4px;overflow:hidden"><div style="width:${w.toFixed(0)}%;height:100%;background:${isCur?'var(--coral-d,#E1477E)':col}"></div></div></td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<div style="margin-top:14px;background:#F7F6FC;border-radius:8px;padding:10px 12px"><p class="muted" style="font-size:11.5px;margin:0 0 8px"><b>Assumptions</b> — edit and Year-1 + the sensitivity recompute. <b>Ramp-up %</b> = share of run-rate in each month since opening (M1…M12). <b>Season idx</b> = each calendar month vs a 100 average (keep the 12 averaging ~100 so a full year nets to plan). <b>Plan baseline</b> = the open month the committed Year-1 figure assumes (its factor is 100%).</p>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:5px;margin-bottom:8px"><label class="bb" style="margin:0 6px 6px 0">Ramp-up %</label>`+rampCurveArr().map((v,i)=>`<div style="text-align:center"><div class="muted" style="font-size:9px">M${i+1}</div><input class="num" style="width:40px;font-size:12px" type="number" value="${escAttr((finMonthly.rampCurve||[])[i])}" onchange="updRampCurve(${i},this.value)"></div>`).join('')+`</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:5px;margin-bottom:8px"><label class="bb" style="margin:0 6px 6px 0">Season idx</label>`+MONF.map((m,i)=>`<div style="text-align:center"><div class="muted" style="font-size:9px">${m}</div><input class="num" style="width:40px;font-size:12px" type="number" value="${escAttr((finMonthly.seasIndex||[])[i])}" onchange="updSeasIndex(${i},this.value)"></div>`).join('')+`</div>`;
+  h+=`<div style="display:flex;align-items:center;gap:8px"><label class="bb" style="margin:0">Plan baseline month</label><select class="sel" onchange="updRefMo(this.value)">`+MONF.map((m,j)=>`<option value="${j+1}" ${refMo===j+1?'selected':''}>${m}</option>`).join('')+`</select></div></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:8px">This flexes the <b>Year-1</b> store + online total by the timing factor and leaves Years 2–3 untouched. It captures the revenue alignment of ramp-up vs season only — not launch-marketing buzz or cash timing, which also favour opening into the gift season. One input to the date decision, not the whole call.</p></div>`;
+  return h;
+}
 /* Seasonal profiles keyed by CALENDAR month (Jan..Dec), so Summer-led always lands on Jun–Aug
    no matter which month the store opens in. Applied as a tilt on top of the launch ramp. */
 const SEAS_PRESETS={
@@ -2010,8 +2053,9 @@ function b2bWonValue(){return PIPE.b2b.rows.filter(r=>r.stage==='Won').reduce((a
 function promoWonValue(){return PIPE.promo.rows.filter(r=>r.stage==='Won').reduce((a,r)=>a+(Number(r.value)||0),0);}
 function computeFinance(){const f=fin;
   const startupTotal=Object.values(f.startup).reduce((a,b)=>a+b,0);const da=f.startup.fitout/f.dep;
-  const store=[f.atv*f.tx1*f.days*f.smo1,f.atv*f.tx2*f.days*12,f.atv*f.tx3*f.days*12];
-  const online=[f.ord1*f.aov*f.omo1,f.ord2*f.aov*12,f.ord3*f.aov*12];
+  const _tf=(typeof launchTimingFactor==='function')?launchTimingFactor():1;   // Year-1 flexes with launch timing (ramp-up × season alignment)
+  const store=[f.atv*f.tx1*f.days*f.smo1*_tf,f.atv*f.tx2*f.days*12,f.atv*f.tx3*f.days*12];
+  const online=[f.ord1*f.aov*f.omo1*_tf,f.ord2*f.aov*12,f.ord3*f.aov*12];
   const retail=store.map((v,i)=>v+online[i]);
   const b2b=[Math.max(b2bWonValue(),f.b2b1||0),f.acc2*f.racc,f.acc3*f.racc];const promo=[Math.max(promoWonValue(),f.promo1||0),f.con2*f.rcon,f.con3*f.rcon];
   const rev=retail.map((v,i)=>v+b2b[i]+promo[i]);
@@ -2036,6 +2080,9 @@ function updFin(k,v){fin[k]=Number(v);render();}
 let finMonthly={
  note:"Launch-year monthly ramp — how Year 1 builds month by month (opening ~Nov 2026). Weights are relative and always allocate the full annual Year-1 totals, so this reconciles to the model. Edit the weights to reshape the ramp & seasonality; running cash shows the intra-year trough the €200k must cover (deeper than the year-end figure).",
  start:{mo:11,yr:2026},
+ refMo:11,
+ rampCurve:[55,70,82,90,96,100,100,100,100,100,100,100],
+ seasIndex:[78,78,92,98,102,108,108,72,98,108,118,140],
  months:[
   {m:"Nov ’26",r:6,b:3,p:6},{m:"Dec ’26",r:14,b:10,p:16},{m:"Jan ’27",r:6,b:6,p:7},
   {m:"Feb ’27",r:6,b:6,p:5},{m:"Mar ’27",r:7,b:8,p:7},{m:"Apr ’27",r:10,b:11,p:11},
@@ -2043,7 +2090,7 @@ let finMonthly={
   {m:"Aug ’27",r:5,b:4,p:3},{m:"Sep ’27",r:9,b:8,p:8},{m:"Oct ’27",r:11,b:7,p:14}
  ]
 };
-function normalizeMonthly(x){x=x||{};if(typeof x.note!=='string')x.note=finMonthly.note;if(!Array.isArray(x.months)||!x.months.length)x.months=finMonthly.months;if(!x.start||!x.start.mo)x.start=parseStartFrom(x.months);return x;}
+function normalizeMonthly(x){x=x||{};if(typeof x.note!=='string')x.note=finMonthly.note;if(!Array.isArray(x.months)||!x.months.length)x.months=finMonthly.months;if(!x.start||!x.start.mo)x.start=parseStartFrom(x.months);if(!Array.isArray(x.rampCurve)||x.rampCurve.length!==12)x.rampCurve=finMonthly.rampCurve.slice();if(!Array.isArray(x.seasIndex)||x.seasIndex.length!==12)x.seasIndex=finMonthly.seasIndex.slice();if(x.refMo==null)x.refMo=finMonthly.refMo;return x;}
 function updMonthly(i,k,v){finMonthly.months[i][k]=(k==='m')?v:(v===''?'':Number(v));render();}
 function updMonthlyNote(v){finMonthly.note=v;render();}
 function computeMonthly(){
@@ -2092,6 +2139,7 @@ function viewFinance(){const F=computeFinance();
   h+=`</tbody></table></div>`;
   h+=`<div style="margin-top:10px"><label class="bb">Ramp assumptions / notes</label>`+taField(finMonthly.note,"updMonthlyNote(this.value)")+`</div>`;
   h+=`<p class="muted" style="font-size:12px;margin-top:8px">Weights are relative — they always sum to the annual Year-1 totals (retail ${eur(F.retail[0])}, B2B ${eur(F.b2b[0])}, promo ${eur(F.promo[0])}), so the monthly view can't drift from the model. Running cash ≈ operating cash (D&A is non-cash; tax ≈ 0 in the loss year). The <b>trough</b> is the real funding test — deeper than the year-end number.</p></div>`;
+  h+=launchTimingCard();
   h+=secondStoreCard();
   return h;
 }
