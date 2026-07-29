@@ -1285,15 +1285,49 @@ function streetKPI(s){
   const F=funnelRates(s.stype||''); const am=audienceMix(s);
   const buyEff=(locSettings.convRate??18)/100*am.buyMult;
   const perDay=blend*6*hrs, entr=perDay*F.cap, tx=entr*buyEff;   // footfall → capture → audience-weighted buy
-  return {perDay,entr,tx,cap:F.cap,buyEff,touristPct:am.touristPct,vsPlan:planTx>0?tx/planTx:0};
+  const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 passers
+  return {perDay,entr,tx,cap:F.cap,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
+}
+/* ---- Street ranking leaderboard: streets ordered by modeled footfall→sales ---- */
+function streetRankCard(){
+  const planTx=Number(fin.tx1)||18;
+  const scored=locStreets.map(s=>({s,k:streetKPI(s)})).filter(o=>o.k);
+  if(!scored.length)return '';
+  const bySales=scored.slice().sort((a,b)=>b.k.tx-a.k.tx);
+  const byFoot=scored.slice().sort((a,b)=>b.k.perDay-a.k.perDay);
+  const footRank=new Map(byFoot.map((o,i)=>[o.s.id,i]));
+  const clears=bySales.filter(o=>o.k.vsPlan>=1).length;
+  const maxEff=Math.max(...scored.map(o=>o.k.eff),0.001);
+  // footfall trap: top-third by footfall but below the plan on sales
+  const topFootN=Math.max(3,Math.ceil(scored.length/3));
+  const trap=byFoot.slice(0,topFootN).filter(o=>o.k.vsPlan<0.85).map(o=>o.s.name);
+  const tier=v=>v>=1?['ok','clears plan']:v>=0.7?['review','near plan']:['elim','below plan'];
+  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street ranking — footfall → sales <span class="badge">the decision layer</span></p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b> (footfall × capture × audience-weighted buy), not by raw footfall — because how well a street <i>converts</i> its traffic matters as much as how much it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The <b>Sales / 1k</b> column is conversion quality: sales per 1,000 passers, independent of volume — a local shopping street converts far more per passer than a transit artery.</p>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th>Capture</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k passers</th></tr></thead><tbody>`;
+  bySales.forEach((o,i)=>{const s=o.s,k=o.k;const[tc,tl]=tier(k.vsPlan);
+    const effW=Math.round(k.eff/maxEff*100);
+    const fr=footRank.get(s.id);const trapFlag=(fr<topFootN&&k.vsPlan<0.85)?` <span title="High footfall, weak conversion — the footfall trap" style="color:var(--st-blocked);font-weight:700">⚠ trap</span>`:'';
+    h+=`<tr><td><b>${i+1}</b></td>`+
+    `<td style="min-width:150px">${esc(s.name||'—')}${trapFlag}</td>`+
+    `<td class="muted">${esc(s.area||'')}</td>`+
+    `<td>${esc((STYPE[s.stype||'']||STYPE['']).label)}</td>`+
+    `<td>${num(k.perDay)}</td>`+
+    `<td>${(k.cap*100).toFixed(2)}%</td>`+
+    `<td style="font-weight:700">${k.tx.toFixed(1)}</td>`+
+    `<td style="white-space:nowrap"><span class="flag ${tc}">${Math.round(k.vsPlan*100)}%</span> <span class="muted" style="font-size:11px">${tl}</span></td>`+
+    `<td><div style="display:flex;align-items:center;gap:6px"><div style="flex:0 0 60px;height:7px;background:#EEE;border-radius:4px;overflow:hidden"><div style="width:${effW}%;height:100%;background:var(--brand,#7A5AF8)"></div></div><span style="font-weight:600">${k.eff.toFixed(1)}</span></div></td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:8px">${trap.length?`<b>Footfall trap</b> — ${trap.join(', ')} draw big crowds but convert poorly (transit/rushing footfall), so they rank low on sales despite high traffic. Volume ≠ sales. `:''}Read this ranking alongside rent: the best pitch is a top-ranked street where a unit also fits budget. Footfall is estimated until on-street counts replace it — a real 10-min weekday + Saturday count on your top 3–4 streets is the highest-value validation step.</p></div>`;
+  return h;
 }
 function updStreet(id,k,v){const x=locStreets.find(r=>r.id===id);if(x){x[k]=["name","area","rentBand","anchors","note","src","stype"].includes(k)?v:(v===""?"":Number(v));render();}}
 function addStreet(){locStreets.push({id:"ST"+(_stid++),area:"",name:"",foot:"",sfWk:"",sfWe:"",fit:"",hrs:"",rentBand:"",anchors:"",src:"est",note:""});render();}
 function rmStreet(id){locStreets=locStreets.filter(r=>r.id!==id);render();}
 function streetsCard(){
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Streets — rank within a neighbourhood <span class="badge">footfall × brand-fit</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">The layer between neighbourhood and unit — score individual streets so you hunt units on the best ones. <b>Wk/We /10min</b> = estimated footfall on the street (from Google popular-times where marked <b>data</b>, else a street-knowledge estimate). <b>Entry</b> = footfall × the capture rate → <b>Sales/day</b> = × conversion (both rates set in the Footfall model below), shown vs the ${Number(fin.tx1)||18}/day plan. Rating score = footfall/5 × 0.6 + brand-fit/5 × 0.4.</p>`;
-  const rows=locStreets.slice().sort((a,b)=>((streetScore(b)??-1)-(streetScore(a)??-1)));
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">The editable data behind the ranking above — enter each street's footfall and edit its type here. <b>Wk/We /10min</b> = estimated footfall (from Google popular-times where marked <b>data</b>, else a street-knowledge estimate). <b>Entry</b> = footfall × capture → <b>Sales/day</b> = × audience-weighted buy-rate, shown vs the ${Number(fin.tx1)||18}/day plan. Rows are sorted by modeled <b>Sales/day</b> (same order as the ranking); the <b>Score</b> column is the separate footfall/5 × 0.6 + brand-fit/5 × 0.4 rating.</p>`;
+  const rows=locStreets.slice().sort((a,b)=>{const ka=streetKPI(a),kb=streetKPI(b);return ((kb?kb.tx:(streetScore(b)??-1))-(ka?ka.tx:(streetScore(a)??-1)));});
   h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Street</th><th>Area</th><th>Footfall /5</th><th>Wk /10min</th><th>We /10min</th><th>Brand-fit /5</th><th>Busy hrs</th><th>Entry (entrants/day)</th><th>Sales/day</th><th>Rent</th><th>Key anchors</th><th>Score</th><th>Type</th><th>Src</th><th></th></tr></thead><tbody>`;
   rows.forEach(s=>{const sc=streetScore(s),k=streetKPI(s);
     h+=`<tr><td style="min-width:130px"><input class="txt" value="${escAttr(s.name)}" onchange="updStreet('${s.id}','name',this.value)"></td>`+
@@ -1406,7 +1440,8 @@ function footfallCard(){
   STYPE_KEYS.forEach(k=>{const m=STYPE[k];const cp=funnelRates(k).cap;const am=audienceMix({stype:k});const buyPct=(conv/100*am.buyMult*100);
     h+=`<tr><td><b>${esc(m.label)}</b>${k===''?' <span class="muted">(default)</span>':''}</td><td>${m.notice.toFixed(2)}</td><td>${m.stop.toFixed(2)}</td><td>${m.entry.toFixed(2)}</td><td style="font-weight:700">${(cp*100).toFixed(2)}%</td><td>${am.touristPct}%</td><td>${buyPct.toFixed(1)}%</td><td>${am.atvMult.toFixed(2)}</td></tr>`;});
   h+=`</tbody></table></div>`;
-  h+=`<p class="muted" style="font-size:12px;margin-top:10px">A street needs roughly <b>${num(reqPassDay)} passers/day</b> (~${Math.round(reqPer10)} per 10 min, weekday) to hit the Year-1 plan at neutral rates. Benchmarks: window-notice ~30–40% on a colourful shopfront; stop ~12–18%; enter-given-stop ~35–45% (→ ~2% combined capture); base buy ~15–22% once inside; a healthy retail <b>rent-to-sales ratio ≈ 10–15%</b>. The two layers are separate: <b>street type</b> decides how much footfall becomes entrants (capture); the <b>audience mix</b> decides how many entrants buy and how much they spend. A tourist-heavy pitch converts a shade lower per head but on higher flow; a local-heavy street converts higher on lower flow. Override the tourist share per unit in Details when you know the pitch. Treat every figure as a directional filter — replace estimates with your own on-street counts as they come in.</p></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:10px">A street needs roughly <b>${num(reqPassDay)} passers/day</b> (~${Math.round(reqPer10)} per 10 min, weekday) to hit the Year-1 plan at neutral rates. Benchmarks: window-notice ~30–40% on a colourful shopfront; stop ~12–18%; enter-given-stop ~35–45% (→ ~2% combined capture); base buy ~15–22% once inside; a healthy retail <b>rent-to-sales ratio ≈ 10–15%</b>. The two layers are separate: <b>street type</b> decides how much footfall becomes entrants (capture); the <b>audience mix</b> decides how many entrants buy and how much they spend. A tourist-heavy pitch converts a shade lower per head but on higher flow; a local-heavy street converts higher on lower flow. Override the tourist share per unit in Details when you know the pitch. Treat every figure as a directional filter — replace estimates with your own on-street counts as they come in.</p>`;
+  h+=`<div style="margin-top:10px;padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px"><p class="muted" style="font-size:11.5px;margin:0"><b>Reality-check on capture rate.</b> There is <b>no reliable global benchmark</b> — footfall-analytics vendors caution that any cross-industry capture figure is "directional at best" and advise comparing your own stores over time instead. The few published examples run higher than this model: ~<b>6–8%</b> in an Ariadne fashion-retail case, ~10% in a Vemco illustration — but those are established brands, often on prime streets, and definitions vary (some count only paused/relevant traffic). Our neutral ~<b>2%</b> is a deliberately <b>conservative</b> assumption for a new brand on a secondary street; the honest risk is it's low, not high. Only a real on-street count settles it. (Sources: Ariadne, Vemco capture-rate guides, 2026.)</p></div></div>`;
   return h;
 }
 function updLoc(id,k,v){const l=locListings.find(x=>x.id===id);l[k]=["area","link","notes","status","agent","contact","nextAct","nextDate","fwPeak","posType","posInfo","stype"].includes(k)?v:(v===""?"":Number(v));render();}
@@ -1494,6 +1529,7 @@ function viewLocation(){
   AREA_CRIT.forEach((c,i)=>{h+=`<tr><td>${esc(c[0])}</td><td>${Math.round(c[1]*100)}%</td>`+locAreas.map(a=>{if(!a.scores)a.scores=Array(AREA_CRIT.length).fill("");return `<td><input class="num" style="width:44px" type="number" min="1" max="5" value="${a.scores[i]??''}" onchange="updAreaScore('${a.id}',${i},this.value)"></td>`;}).join("")+`</tr>`;});
   const afits=locAreas.map(a=>areaFit(a));
   h+=`<tr class="subhdr"><td>Weighted fit /5</td><td></td>`+afits.map(f=>`<td>${f!=null?f.toFixed(1):'—'}</td>`).join("")+`</tr></tbody></table></div></div>`;
+  h+=streetRankCard();
   h+=streetsCard();
   const S=[["maxRent","Max monthly rent (€)"],["sizeMin","Size min (m²)"],["sizeMax","Size max (m²)"],["maxM2","Max €/m²/mo"],["maxUpfrontMo","Max upfront (months)"],["maxTraspaso","Max traspaso (€)"]];
   h+=`<div class="card"><p class="sectiontitle">Settings — budget & thresholds</p><div style="display:flex;flex-wrap:wrap;gap:16px">`+S.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" value="${locSettings[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div></div>`;
