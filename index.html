@@ -999,6 +999,20 @@ function updPromoCatNote(v){segModels.promoCatalogue.note=v;render();}
 function updPromoCatItem(i,k,v){segModels.promoCatalogue.items[i][k]=v;render();}
 function addPromoCatItem(){segModels.promoCatalogue.items.push({product:"",custom:"",moq:"",tiers:"",lead:""});render();}
 function rmPromoCatItem(i){segModels.promoCatalogue.items.splice(i,1);render();}
+/* Promo quote calculator — volume-tier price book + live quote (mirrors the retail funnel). */
+const PROMO_CALC_SEED={setupFee:250,qty:300,productIdx:0,products:[
+ {name:"Custom phone strap",cogs:7.00,tiers:[{min:100,price:12.00},{min:300,price:10.50},{min:1000,price:9.20}]},
+ {name:"Custom charm / keyring",cogs:5.40,tiers:[{min:100,price:9.00},{min:500,price:7.80},{min:1500,price:7.00}]},
+ {name:"Welcome kit (bundle)",cogs:21.00,tiers:[{min:50,price:35.00},{min:200,price:31.00},{min:500,price:28.50}]},
+ {name:"Event / festival merch",cogs:5.76,tiers:[{min:150,price:9.60},{min:500,price:8.20},{min:1500,price:7.40}]},
+ {name:"Lanyard / badge cord",cogs:3.50,tiers:[{min:100,price:7.00},{min:500,price:5.80},{min:1500,price:5.20}]}
+]};
+function pcalc(){if(!segModels.promoCalc||!Array.isArray(segModels.promoCalc.products))segModels.promoCalc=JSON.parse(JSON.stringify(PROMO_CALC_SEED));return segModels.promoCalc;}
+function updPCalc(f,v){const c=pcalc();c[f]=(v===''?(f==='productIdx'?0:''):Number(v));render();}
+function updPCalcProd(i,f,v){const c=pcalc();c.products[i][f]=(f==='cogs')?(v===''?'':Number(v)):v;render();}
+function updPCalcTier(i,ti,f,v){const c=pcalc();if(!c.products[i].tiers[ti])c.products[i].tiers[ti]={min:'',price:''};c.products[i].tiers[ti][f]=(v===''?'':Number(v));render();}
+function addPCalcProd(){pcalc().products.push({name:"New product",cogs:5,tiers:[{min:100,price:10},{min:500,price:8.5},{min:1500,price:7.5}]});render();}
+function rmPCalcProd(i){const c=pcalc();c.products.splice(i,1);if(Number(c.productIdx)>=c.products.length)c.productIdx=0;render();}
 function segTrajectoryCard(){const F=computeFinance();const rows=[["Retail",F.retail,"sales/day "+fin.tx1+"→"+fin.tx2+"→"+fin.tx3],["B2B",F.b2b,"accounts (Y1 floor → "+fin.acc2+" → "+fin.acc3+")"],["Promotional",F.promo,"contracts (Y1 floor → "+fin.con2+" → "+fin.con3+")"],["Total",F.rev,""]];
  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Three-year channel trajectory (live from Finance)</p><p class="viewsub" style="margin:-6px 0 10px">How each channel scales Y1→Y3 — computed from the Finance drivers, so it can't drift from the model.</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Channel</th><th>Year 1 €</th><th>Year 2 €</th><th>Year 3 €</th><th>CAGR</th><th>What scales it</th></tr></thead><tbody>`;
  rows.forEach(function(r){var lab=r[0],a=r[1],drv=r[2];var cagr=a[0]>0?Math.round((Math.sqrt(a[2]/a[0])-1)*100):0;var st=lab==="Total"?"font-weight:800":"";h+=`<tr style="${st}"><td>${lab}</td><td>${eur(a[0])}</td><td>${eur(a[1])}</td><td>${eur(a[2])}</td><td>${cagr}%/yr</td><td class="muted" style="font-size:12px">${drv}</td></tr>`;});
@@ -1024,8 +1038,34 @@ function promoCatalogueCard(){const cat=(segModels.promoCatalogue&&Array.isArray
   `<td><input class="txt" style="width:70px" value="${escAttr(it.lead)}" onchange="updPromoCatItem(${i},'lead',this.value)"></td>`+
   `<td><button class="rmv" onclick="rmPromoCatItem(${i})">×</button></td></tr>`;});
  h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addPromoCatItem()">+ add product</button></div><div style="margin-top:10px"><label class="bb">Catalogue notes / pricing basis</label>`+taField(cat.note,"updPromoCatNote(this.value)")+`</div></div>`;return h;}
+function promoCalcCard(){const c=pcalc();const col=segColor("Promotional");const prods=c.products;
+ const pi=Math.min(Math.max(0,Number(c.productIdx)||0),prods.length-1);const prod=prods[pi];
+ const qty=Number(c.qty)||0,setup=Number(c.setupFee)||0;
+ const sorted=prod.tiers.slice().sort((a,b)=>Number(a.min)-Number(b.min));
+ let tier=sorted[0],ti=0;sorted.forEach((t,idx)=>{if(qty>=Number(t.min)){tier=t;ti=idx;}});
+ const belowMOQ=qty<Number(sorted[0].min);
+ const unit=Number(tier.price)||0,line=unit*qty,total=line+setup;
+ const cogsTot=(Number(prod.cogs)||0)*qty,gross=(line-cogsTot)+setup,marginPct=total>0?gross/total*100:0;
+ let h=`<div class="card" style="margin-top:16px;border-top:4px solid ${col}"><p class="sectiontitle" style="color:${col}">Promo quote calculator <span class="badge">volume tiers + setup fee</span></p>`;
+ h+=`<p class="viewsub" style="margin:-6px 0 12px">Pick a product and a quantity to auto-quote a promo contract — it finds the volume tier, applies the per-unit price and one-off setup fee, and shows the contract total and margin. Edit the price book to your HQ transfer costs. A tunable model, like the retail funnel — not a fixed number.</p>`;
+ h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:10px"><div class="setrow"><label style="min-width:0">Product</label><select class="sel" onchange="updPCalc('productIdx',this.value)">${prods.map((p,idx)=>`<option value="${idx}" ${idx===pi?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div><div class="setrow"><label style="min-width:0">Quantity</label><input class="num" type="number" value="${escAttr(c.qty)}" onchange="updPCalc('qty',this.value)"></div><div class="setrow"><label style="min-width:0">Setup fee €</label><input class="num" type="number" value="${escAttr(c.setupFee)}" onchange="updPCalc('setupFee',this.value)"></div></div>`;
+ h+=`<div class="grid g4" style="margin-bottom:6px">
+   <div class="card stat"><span class="k">Tier applied</span><span class="v" style="font-size:19px">${belowMOQ?'below MOQ':'T'+(ti+1)+' · '+num(tier.min)+'+'}</span><span class="sub">€${unit.toFixed(2)}/unit</span></div>
+   <div class="card stat"><span class="k">Units subtotal</span><span class="v">${eur(line)}</span><span class="sub">${num(qty)} × €${unit.toFixed(2)}</span></div>
+   <div class="card stat"><span class="k">Contract total</span><span class="v">${eur(total)}</span><span class="sub">+ €${num(setup)} setup</span></div>
+   <div class="card stat"><span class="k">Gross margin</span><span class="v" style="color:${marginPct>=35?'var(--st-done)':marginPct>=25?'var(--st-inprogress)':'var(--st-blocked)'}">${Math.round(marginPct)}%</span><span class="sub">${eur(gross)} gross</span></div></div>`;
+ if(belowMOQ)h+=`<p class="muted" style="font-size:12px;color:var(--st-blocked);margin:2px 0 6px">⚠ ${num(qty)} is below the ${num(sorted[0].min)}-unit minimum — quote at MOQ or add a small-order surcharge.</p>`;
+ h+=`<p class="sectiontitle" style="margin:14px 0 6px;font-size:13px">Price book — per-unit price by volume tier (min · €)</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Product</th><th>COGS €</th><th>Tier 1</th><th>Tier 2</th><th>Tier 3</th><th>Margin @ T2</th><th></th></tr></thead><tbody>`;
+ prods.forEach((p,i)=>{const ts=p.tiers;const t2=ts[1]||ts[0];const mg=(t2&&Number(t2.price))?Math.round((Number(t2.price)-Number(p.cogs))/Number(t2.price)*100):null;
+  h+=`<tr${i===pi?' style="background:#FBF7FF"':''}><td><input class="txt" style="min-width:150px" value="${escAttr(p.name)}" onchange="updPCalcProd(${i},'name',this.value)"></td>`+
+  `<td><input class="num" style="width:64px" type="number" step="0.1" value="${escAttr(p.cogs)}" onchange="updPCalcProd(${i},'cogs',this.value)"></td>`+
+  [0,1,2].map(k=>{const t=ts[k]||{min:'',price:''};return `<td style="white-space:nowrap"><input class="num" style="width:52px" type="number" value="${escAttr(t.min)}" onchange="updPCalcTier(${i},${k},'min',this.value)"> · <input class="num" style="width:56px" type="number" step="0.1" value="${escAttr(t.price)}" onchange="updPCalcTier(${i},${k},'price',this.value)"></td>`;}).join('')+
+  `<td>${mg!=null?mg+'%':'—'}</td><td><button class="rmv" onclick="rmPCalcProd(${i})">×</button></td></tr>`;});
+ h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addPCalcProd()">+ add product</button></div>`;
+ h+=`<p class="muted" style="font-size:11.5px;margin-top:8px">Margin is per-unit (price − COGS) plus the one-off setup fee on the quote; it excludes design/artwork time and shipping, so keep a buffer. The setup fee should at least cover screens/tooling for the run. Confirm tier prices against the live HQ transfer cost before quoting a client.</p></div>`;
+ return h;}
 
-function normalizeSegModels(s){s=s||{};if(typeof s.intro!=='string')s.intro=segModels.intro;if(!Array.isArray(s.priceLadder))s.priceLadder=segModels.priceLadder;if(typeof s.ladderNote!=='string')s.ladderNote=segModels.ladderNote;["retail","b2b","promo"].forEach(k=>{s[k]=Object.assign({offer:"",econ:"",terms:"",target:"",who:""},s[k]||segModels[k]);});if(typeof s.synergy!=='string')s.synergy=segModels.synergy;if(!s.retailMix||typeof s.retailMix!=='object'||!Array.isArray(s.retailMix.groups)){s.retailMix=segModels.retailMix;}else{if(typeof s.retailMix.transactions!=='number')s.retailMix.transactions=segModels.retailMix.transactions;if(typeof s.retailMix.note!=='string')s.retailMix.note=segModels.retailMix.note;}["b2bMix","promoMix"].forEach(k=>{if(!s[k]||typeof s[k]!=='object'||!Array.isArray(s[k].groups))s[k]=segModels[k];else if(typeof s[k].note!=='string')s[k].note=segModels[k].note;});if(!s.promoCatalogue||typeof s.promoCatalogue!=='object'||!Array.isArray(s.promoCatalogue.items))s.promoCatalogue=PROMO_CAT_SEED;else if(typeof s.promoCatalogue.note!=='string')s.promoCatalogue.note=PROMO_CAT_SEED.note;return s;}
+function normalizeSegModels(s){s=s||{};if(typeof s.intro!=='string')s.intro=segModels.intro;if(!Array.isArray(s.priceLadder))s.priceLadder=segModels.priceLadder;if(typeof s.ladderNote!=='string')s.ladderNote=segModels.ladderNote;["retail","b2b","promo"].forEach(k=>{s[k]=Object.assign({offer:"",econ:"",terms:"",target:"",who:""},s[k]||segModels[k]);});if(typeof s.synergy!=='string')s.synergy=segModels.synergy;if(!s.retailMix||typeof s.retailMix!=='object'||!Array.isArray(s.retailMix.groups)){s.retailMix=segModels.retailMix;}else{if(typeof s.retailMix.transactions!=='number')s.retailMix.transactions=segModels.retailMix.transactions;if(typeof s.retailMix.note!=='string')s.retailMix.note=segModels.retailMix.note;}["b2bMix","promoMix"].forEach(k=>{if(!s[k]||typeof s[k]!=='object'||!Array.isArray(s[k].groups))s[k]=segModels[k];else if(typeof s[k].note!=='string')s[k].note=segModels[k].note;});if(!s.promoCatalogue||typeof s.promoCatalogue!=='object'||!Array.isArray(s.promoCatalogue.items))s.promoCatalogue=PROMO_CAT_SEED;else if(typeof s.promoCatalogue.note!=='string')s.promoCatalogue.note=PROMO_CAT_SEED.note;if(!s.promoCalc||!Array.isArray(s.promoCalc.products)||!s.promoCalc.products.length)s.promoCalc=JSON.parse(JSON.stringify(PROMO_CALC_SEED));return s;}
 function updSM(seg,key,v){segModels[seg][key]=v;render();}
 function updMix(which,i,k,v){segModels[which].groups[i][k]=(k==='units'||k==='net'||k==='cogs')?(v===''?'':Number(v)):v;render();}
 function addMix(which){segModels[which].groups.push({group:"",units:"",net:"",cogs:""});render();}
@@ -1093,6 +1133,7 @@ function viewSegments(){
   html+=segUnitEconCard();
   html+=segScenarioCard();
   html+=promoCatalogueCard();
+  html+=promoCalcCard();
   // Progress by segment (the original task-filter view)
   html+=`<p class="sectiontitle" style="margin:22px 0 10px">Progress by segment</p><p class="viewsub" style="margin-top:0">Filter the task list to focus one segment end-to-end.</p>`;
   html+=segChips();
