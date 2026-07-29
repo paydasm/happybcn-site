@@ -155,9 +155,9 @@
   .subwrap{border-left:2px solid #E0D8F5;margin-left:8px;padding:6px 0 2px 14px}
   .sub-n{background:#EDE9FB;color:#6C4BD8}
   /* modules: inputs, tables, flags */
-  input.num{width:82px;font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line);border-radius:8px;text-align:right}
-  input.txt{font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line);border-radius:8px;width:100%;min-width:120px}
-  select.sel{font:inherit;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:4px 6px;background:#fff;cursor:pointer}
+  input.num{width:82px;min-width:66px;box-sizing:border-box;font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right}
+  input.txt{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:100%;min-width:130px;box-sizing:border-box}
+  select.sel{font:inherit;font-size:13.5px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff;cursor:pointer;min-width:66px;max-width:100%;box-sizing:border-box}
   .flag{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
   .flag.ok{background:#D5F2E3;color:#0E7A54}.flag.review{background:#FFF3C4;color:#9A6A00}.flag.elim{background:#FBDDDD;color:#B42318}
   .flag.prime{background:#D8E7FF;color:#1E4FA3}.flag.strong{background:#D5F2E3;color:#0E7A54}.flag.consider{background:#FFF3C4;color:#9A6A00}.flag.deprio{background:#ECECF2;color:#6A6F80}
@@ -230,8 +230,8 @@
     table.grid2 th,table.grid2 td{padding:9px 8px}
     .setrow{width:100%}
     .setrow label{min-width:130px;flex:1}
-    input.num{min-width:66px}
-    input.num,select.sel{padding:8px 8px;font-size:13px}
+    input.num{min-width:76px}
+    input.num,input.txt,select.sel{padding:9px 9px;font-size:16px}
     /* keep the label column pinned while scrolling wide grids sideways */
     table.grid2 td:first-child,table.grid2 th:first-child{position:sticky;left:0;background:#fff;box-shadow:2px 0 4px rgba(29,34,51,.04)}
     table.grid2 thead th:first-child{background:#1D2233}
@@ -1221,7 +1221,7 @@ function selOpts(opts,val,handler){return `<select class="sel" onchange="${handl
 let _lid=100,_pid=100,_aid=100;
 
 /* ---- LOCATION ---- */
-let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26};
+let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5};
 /* ---- Multi-stage footfall→sales funnel ----
    TWO layers. (1) Street type shapes the FOOTFALL→ENTRY funnel: notice → stop → enter,
    which multiply to the effective walk-in capture. Neutral ('') reproduces the legacy
@@ -1267,6 +1267,15 @@ function buyBase(){ // overall entry→buy before audience weighting
   if(locSettings.browseRate!=null&&locSettings.closeRate!=null) return browseRate()*closeRate();
   return (locSettings.convRate??18)/100;
 }
+/* Frontage factor: a wider shopfront / window catches more eyes, so it scales the
+   window-attention steps (notice + look). Bounded elasticity vs a baseline width. */
+function frontFactor(l){
+  const fm=(l.frontM!=null&&l.frontM!=='')?Number(l.frontM):null;
+  if(fm==null||fm<=0)return 1;
+  const base=locSettings.baseFrontM??5, el=locSettings.frontElast??0.5;
+  const f=Math.pow(fm/base, el);
+  return Math.max(0.6,Math.min(1.6,f));   // clamp so an outlier width can't dominate
+}
 /* Target neighbourhoods — where to focus the search (indicative secondary-street rent bands, €/m²·mo). */
 let locAreas=[
  {id:"A1",name:"Gràcia",streets:"Verdi · Torrijos · Astúries · Plaça del Sol · Travessera de Gràcia",rentLo:18,rentHi:30,scores:[4,5,5,5,5,4],note:"The flagship fit: village feel, independent shops, colour-loving young locals + curious travellers. Units are small and characterful — act fast when a good one appears."},
@@ -1295,7 +1304,7 @@ function streetKPI(s){
   const buyEff=buyBase()*am.buyMult;                             // entry→buy = browse × close, audience-weighted
   const perDay=blend*6*hrs, entr=perDay*F.cap, tx=entr*buyEff;   // footfall → capture → buy
   const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 passers
-  return {perDay,entr,tx,cap:F.cap,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
+  return {perDay,entr,tx,cap:F.cap,w:F.w,s:F.s,e:F.e,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
 }
 /* ---- Street ranking leaderboard: streets ordered by modeled footfall→sales ---- */
 function streetRankCard(){
@@ -1312,8 +1321,10 @@ function streetRankCard(){
   const trap=byFoot.slice(0,topFootN).filter(o=>o.k.vsPlan<0.85).map(o=>o.s.name);
   const tier=v=>v>=1?['ok','clears plan']:v>=0.7?['review','near plan']:['elim','below plan'];
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street ranking — footfall → sales <span class="badge">the decision layer</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b> (footfall × capture × audience-weighted buy), not by raw footfall — because how well a street <i>converts</i> its traffic matters as much as how much it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The <b>Sales / 1k</b> column is conversion quality: sales per 1,000 passers, independent of volume — a local shopping street converts far more per passer than a transit artery.</p>`;
-  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th>Capture</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k passers</th></tr></thead><tbody>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The capture is broken into its consumer-behaviour steps (<b>① Notice → ② Look → ③ Enter</b>); edit the assumptions below and the whole ranking re-sorts live. <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
+  // editable global assumptions — partners can play with these
+  h+=`<div style="background:#F7F6FC;border-radius:8px;padding:10px 12px;margin:0 0 12px"><p class="muted" style="font-size:11.5px;margin:0 0 7px"><b>Capture &amp; conversion assumptions</b> — edit any rate and the ranking recomputes instantly. Capture = ① × ② × ③ (then re-weighted by each street's type); buy = ④ × ⑤. Per-type multipliers &amp; audience live in the Footfall model card below.</p><div style="display:flex;flex-wrap:wrap;gap:14px">`+[["windowRate","① Notices %"],["stopRate","② Looks %"],["entryRate","③ Enters %"],["browseRate","④ Browses %"],["closeRate","⑤ Buys %"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${esc(l)}</label><input class="num" style="width:58px" type="number" step="any" value="${locSettings[k]??''}" onchange="updLocSetting('${k}',this.value)"></div>`).join('')+`</div></div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th></tr></thead><tbody>`;
   bySales.forEach((o,i)=>{const s=o.s,k=o.k;const[tc,tl]=tier(k.vsPlan);
     const effW=Math.round(k.eff/maxEff*100);
     const fr=footRank.get(s.id);const trapFlag=(fr<topFootN&&k.vsPlan<0.85)?` <span title="High footfall, weak conversion — the footfall trap" style="color:var(--st-blocked);font-weight:700">⚠ trap</span>`:'';
@@ -1322,7 +1333,10 @@ function streetRankCard(){
     `<td class="muted">${esc(s.area||'')}</td>`+
     `<td>${esc((STYPE[s.stype||'']||STYPE['']).label)}</td>`+
     `<td>${num(k.perDay)}</td>`+
-    `<td>${(k.cap*100).toFixed(2)}%</td>`+
+    `<td class="muted">${(k.w*100).toFixed(0)}%</td>`+
+    `<td class="muted">${(k.s*100).toFixed(1)}%</td>`+
+    `<td class="muted">${(k.e*100).toFixed(0)}%</td>`+
+    `<td style="font-weight:700">${(k.cap*100).toFixed(2)}%</td>`+
     `<td style="font-weight:700">${k.tx.toFixed(1)}</td>`+
     `<td style="white-space:nowrap"><span class="flag ${tc}">${Math.round(k.vsPlan*100)}%</span> <span class="muted" style="font-size:11px">${tl}</span></td>`+
     `<td><div style="display:flex;align-items:center;gap:6px"><div style="flex:0 0 60px;height:7px;background:#EEE;border-radius:4px;overflow:hidden"><div style="width:${effW}%;height:100%;background:var(--brand,#7A5AF8)"></div></div><span style="font-weight:600">${k.eff.toFixed(1)}</span></div></td></tr>`;});
@@ -1417,7 +1431,8 @@ function locKPI(l){
   const blend10=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);   // Mon–Sat, Saturday at the weekend rate
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
   // Consumer-behaviour funnel: pass → notice (attention) → stop/look (interest) → enter (decision) → browse (engagement) → buy (purchase)
-  const notice=perDay*F.w, stop=notice*F.s, entr=stop*F.e;    // capture = notice × stop × enter
+  const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront
+  const notice=perDay*F.w*ff, stop=notice*F.s, entr=stop*F.e; // capture = notice × stop × enter (notice lifted by frontage)
   const brR=browseRate();                                     // % of entrants who actively browse
   const clEff=closeRate()*am.buyMult;                         // % of browsers who buy, audience-weighted
   const browse=entr*brR;
@@ -1427,7 +1442,7 @@ function locKPI(l){
   const eurMo=tx*atvEff*days;
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
-  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
+  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,capEff:F.cap*ff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
 }
 function footfallCard(){
   const conv=locSettings.convRate??18, oph=locSettings.opHours??10;
@@ -1457,7 +1472,7 @@ function footfallCard(){
     `<div style="flex:1;background:#F1F0F7;border-radius:5px;overflow:hidden;height:22px;position:relative"><div style="width:${w}%;height:100%;background:${col};border-radius:5px;transition:width .3s"></div><span style="position:absolute;left:8px;top:0;line-height:22px;font-size:11px;font-weight:700;color:${w>18?'#fff':'#333'}">${num(cnt)}</span></div>`+
     `<div style="flex:0 0 84px;font-size:11px" class="muted">${rate!=null?`${rate}% of prev`:'baseline'}</div></div>`;});
   h+=`</div><p class="muted" style="font-size:11px;margin:0 0 12px">Of 10,000 people who walk past, ~<b>${num(N*capEff)}</b> come in (capture) and ~<b>${(N*capEff*buyEffN).toFixed(0)}</b> buy. Each bar is a behaviour most people don't take — which is why storefront, window and street type matter so much: they move the early steps, where the biggest numbers drop out.</p>`;
-  h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px"><div class="setrow"><label style="min-width:0">Peak-season × (annualise)</label><input class="num" type="number" step="0.05" value="${locSettings.seasHi??1.25}" onchange="updLocSetting('seasHi',this.value)"></div><div class="setrow"><label style="min-width:0">Low-season ×</label><input class="num" type="number" step="0.05" value="${locSettings.seasLo??0.80}" onchange="updLocSetting('seasLo',this.value)"></div><div class="setrow"><label style="min-width:0"><b>Effective capture (neutral)</b></label><input class="num" type="number" value="${(capEff*100).toFixed(2)}" disabled style="background:#F0EEF9;font-weight:700"></div></div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px"><div class="setrow"><label style="min-width:0">Peak-season × (annualise)</label><input class="num" type="number" step="0.05" value="${locSettings.seasHi??1.25}" onchange="updLocSetting('seasHi',this.value)"></div><div class="setrow"><label style="min-width:0">Low-season ×</label><input class="num" type="number" step="0.05" value="${locSettings.seasLo??0.80}" onchange="updLocSetting('seasLo',this.value)"></div><div class="setrow"><label style="min-width:0">Baseline frontage (m)</label><input class="num" type="number" step="0.5" value="${locSettings.baseFrontM??5}" onchange="updLocSetting('baseFrontM',this.value)"></div><div class="setrow"><label style="min-width:0">Frontage elasticity</label><input class="num" type="number" step="0.05" value="${locSettings.frontElast??0.5}" onchange="updLocSetting('frontElast',this.value)"></div><div class="setrow"><label style="min-width:0"><b>Effective capture (neutral)</b></label><input class="num" type="number" value="${(capEff*100).toFixed(2)}" disabled style="background:#F0EEF9;font-weight:700"></div></div><p class="muted" style="font-size:11px;margin:-4px 0 10px">Frontage: a unit's window width (set per unit in Details) scales its notice/look steps vs the baseline — elasticity ${locSettings.frontElast??0.5} means a 2× wider window lifts capture ~${(Math.pow(2,locSettings.frontElast??0.5)*100-100).toFixed(0)}% (bounded ×0.6–×1.6).</p>`;
   // audience-mix conversion layer
   h+=`<p class="sectiontitle" style="margin:14px 0 4px;font-size:13px">Audience mix — buy-rate & spend by tourist vs local</p><p class="muted" style="font-size:11.5px;margin:0 0 8px">These multipliers apply to the ⑤ buy step (given browse) and average spend. Set each unit's <b>Tourist mix %</b> in Details (or leave blank to use the street-type default below). Tourist × below 1 on buy = browses more, closes less; local × above 1 = comes with intent.</p><div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:4px">`+[["buyTourist","Tourist buy ×"],["buyLocal","Local buy ×"],["atvTourist","Tourist spend ×"],["atvLocal","Local spend ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="0.05" value="${locSettings[k]??({buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97})[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
   h+=`<div class="grid g4" style="margin-bottom:6px">
@@ -1475,7 +1490,7 @@ function footfallCard(){
   return h;
 }
 function updLoc(id,k,v){const l=locListings.find(x=>x.id===id);l[k]=["area","link","notes","status","agent","contact","nextAct","nextDate","fwPeak","posType","posInfo","stype"].includes(k)?v:(v===""?"":Number(v));render();}
-function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:"",stype:"",touristPct:""});render();}
+function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:"",stype:"",touristPct:"",frontM:""});render();}
 function rmLoc(id){locListings=locListings.filter(x=>x.id!==id);if(locOpen===id)locOpen=null;render();}
 function toggleLocOpen(id){locOpen=locOpen===id?null:id;render();}
 function updLocCheck(id,key,v){const l=locListings.find(x=>x.id===id);if(!l)return;if(!l.check)l.check={};l.check[key]=v;render();}
@@ -1495,11 +1510,12 @@ function locDrawer(l){
   d+=`<div class="crmrow" style="margin-top:12px"><label>Position</label>${selOpts(['','Corner','Mid-block','Plaza-facing','Feeder street'],l.posType,`updLoc('${l.id}','posType',this.value)`)}<label>Street type</label><select class="sel" onchange="updLoc('${l.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((l.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select><label>Tourist mix %</label><input class="num" style="width:60px" type="number" min="0" max="100" placeholder="${DEFAULT_TOURIST[l.stype||'']??40}" value="${escAttr(l.touristPct)}" onchange="updLoc('${l.id}','touristPct',this.value)"><label>Position factor</label><input class="num" style="width:54px" type="number" step="0.05" value="${escAttr(l.posFactor)}" onchange="updLoc('${l.id}','posFactor',this.value)"></div>`;
   d+=`<div class="crmrow" style="margin-top:8px"><label>Metro / anchors nearby</label><input class="txt" style="min-width:220px" value="${escAttr(l.posInfo)}" onchange="updLoc('${l.id}','posInfo',this.value)"></div>`;
   d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Position factor scales footfall for the exact spot (corner / metro-adjacent ≈ 1.1–1.3; dead mid-block ≈ 0.7–0.9; default 1.0). <b>Tourist mix %</b> sets the audience split that drives buy-rate & spend — leave blank to use the street-type default (shown as the placeholder).</p>`;
-  d+=`<div class="crmrow" style="margin-top:10px"><label>Footfall — weekday /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWk)}" onchange="updLoc('${l.id}','fwWk',this.value)"><label>Weekend /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWe)}" onchange="updLoc('${l.id}','fwWe',this.value)"><label>Busy hrs/day</label><input class="num" style="width:56px" type="number" value="${escAttr(l.fwHrs)}" onchange="updLoc('${l.id}','fwHrs',this.value)"><label>Peak times seen</label><input class="txt" value="${escAttr(l.fwPeak)}" onchange="updLoc('${l.id}','fwPeak',this.value)"></div>`;
+  d+=`<div class="crmrow" style="margin-top:10px"><label>Footfall — weekday /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWk)}" onchange="updLoc('${l.id}','fwWk',this.value)"><label>Weekend /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWe)}" onchange="updLoc('${l.id}','fwWe',this.value)"><label>Busy hrs/day</label><input class="num" style="width:56px" type="number" value="${escAttr(l.fwHrs)}" onchange="updLoc('${l.id}','fwHrs',this.value)"><label>Frontage / window (m)</label><input class="num" style="width:60px" type="number" step="0.5" placeholder="${locSettings.baseFrontM??5}" value="${escAttr(l.frontM)}" onchange="updLoc('${l.id}','frontM',this.value)"><label>Peak times seen</label><input class="txt" value="${escAttr(l.fwPeak)}" onchange="updLoc('${l.id}','fwPeak',this.value)"></div>`;
+  d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Frontage = the shopfront/window width in metres. A wider window catches more eyes, so it scales the <b>notice</b> and <b>look</b> steps (capture) vs a ${locSettings.baseFrontM??5} m baseline — leave blank to assume baseline. Measure it on the viewing.</p>`;
   const kpi=locKPI(l);
   if(kpi){const rr=kpi.rentRatio;
     const verdict=rr==null?'':rr<=15?'<span style="color:var(--st-done);font-weight:700">healthy</span>':rr<=20?'<span style="color:var(--st-inprogress);font-weight:700">workable</span>':'<span style="color:var(--st-blocked);font-weight:700">stretch</span>';
-    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Behaviour funnel</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}, ${kpi.touristPct}% tourist${kpi.touristExplicit?'':' est'}): ~<b>${num(kpi.perDay)}</b> pass/day → notice ~<b>${num(kpi.notice)}</b> → look ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → browse ~<b>${Math.round(kpi.browse)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Capture ${(kpi.cap*100).toFixed(1)}% → browse ${(kpi.brR*100).toFixed(0)}% → close ${(kpi.clEff*100).toFixed(0)}% × ${kpi.oph} busy hrs${kpi.pos!==1?` × pos ${kpi.pos}`:''} · ATV €${kpi.atvEff.toFixed(0)}.</span></div>`;}
+    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Behaviour funnel</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}, ${kpi.touristPct}% tourist${kpi.touristExplicit?'':' est'}): ~<b>${num(kpi.perDay)}</b> pass/day → notice ~<b>${num(kpi.notice)}</b> → look ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → browse ~<b>${Math.round(kpi.browse)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Capture ${(kpi.capEff*100).toFixed(1)}%${kpi.ff!==1?` (frontage ×${kpi.ff.toFixed(2)})`:''} → browse ${(kpi.brR*100).toFixed(0)}% → close ${(kpi.clEff*100).toFixed(0)}% × ${kpi.oph} busy hrs${kpi.pos!==1?` × pos ${kpi.pos}`:''} · ATV €${kpi.atvEff.toFixed(0)}.</span></div>`;}
   d+=`<div style="margin-top:12px"><label class="muted" style="font-size:12px;display:block;margin-bottom:4px">Notes</label><textarea class="txa" onchange="updLoc('${l.id}','notes',this.value)">${esc(l.notes||'')}</textarea></div>`;
   return d+`</div>`;
 }
