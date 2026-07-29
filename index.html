@@ -1281,7 +1281,7 @@ function importJSON(e){
     if(d.locSettings)locSettings=d.locSettings;if(d.locListings)locListings=d.locListings;if(d.locAreas)locAreas=d.locAreas;
     if(d.b2b){if(d.b2b.rows)PIPE.b2b.rows=d.b2b.rows;if(d.b2b.settings)PIPE.b2b.settings=d.b2b.settings;}
     if(d.promo){if(d.promo.rows)PIPE.promo.rows=d.promo.rows;if(d.promo.settings)PIPE.promo.settings=d.promo.settings;}
-    if(d.fin)fin=d.fin;if(d.market)market=d.market;render();}
+    normalizePipeConv();if(d.fin)fin=d.fin;if(d.market)market=d.market;render();}
     catch(err){/* ignore malformed file */}};
   r.readAsText(f);
 }
@@ -1294,7 +1294,7 @@ function selOpts(opts,val,handler){return `<select class="sel" onchange="${handl
 let _lid=100,_pid=100,_aid=100;
 
 /* ---- LOCATION ---- */
-let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5};
+let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5,femalePct:55,buyFemale:1.35,buyMale:0.55};
 /* ---- Multi-stage footfall→sales funnel ----
    TWO layers. (1) Street type shapes the FOOTFALL→ENTRY funnel: notice → stop → enter,
    which multiply to the effective walk-in capture. Neutral ('') reproduces the legacy
@@ -1330,6 +1330,17 @@ function audienceMix(o){
   const buyMult=t*(locSettings.buyTourist??0.85)+(1-t)*(locSettings.buyLocal??1.15);
   const atvMult=t*(locSettings.atvTourist??1.05)+(1-t)*(locSettings.atvLocal??0.97);
   return {t,touristPct:Math.round(raw),buyMult,atvMult,explicit:(o.touristPct!=null&&o.touristPct!=='')};
+}
+/* Gender mix → capture & buy-rate multipliers. HappyNes' colourful, personalised phone
+   charms skew heavily to female shoppers, who notice the window and (especially) purchase
+   at higher rates. femalePct is the share of passing footfall that is female; blank uses the
+   global default. capMult weights the window-attention steps a little, buyMult the ⑤ buy step a lot. */
+const DEFAULT_FEMALE=55;
+function genderMix(o){
+  const raw=(o.gPct!=null&&o.gPct!=='')?Number(o.gPct):(locSettings.femalePct??DEFAULT_FEMALE);
+  const f=Math.max(0,Math.min(100,raw))/100;             // female fraction 0–1
+  const buyMult=f*(locSettings.buyFemale??1.35)+(1-f)*(locSettings.buyMale??0.55);
+  return {f,femalePct:Math.round(raw),buyMult,explicit:(o.gPct!=null&&o.gPct!=='')};
 }
 /* Buy path (entry → purchase), decomposed into two consumer behaviours:
    browse/engage (% of entrants who actively look around) × close (% of browsers who buy).
@@ -1373,15 +1384,16 @@ function streetKPI(s){
   if(!hasWk&&!hasWe)return null;
   const blend=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);
   const hrs=(s.hrs!=null&&s.hrs!=='')?Number(s.hrs):(locSettings.opHours??10);
-  const F=funnelRates(s.stype||''); const am=audienceMix(s);
-  // per-street overrides: edit the capture steps directly in the ranking table; blank = type-derived default
+  const F=funnelRates(s.stype||''); const am=audienceMix(s); const gm=genderMix(s);
+  // per-street overrides: edit the capture & conversion steps directly in the ranking table; blank = derived default
   const ov=(v,def)=>(v!=null&&v!=='')?Number(v)/100:def;
   const wR2=ov(s.oW,F.w), sR2=ov(s.oL,F.s), eR2=ov(s.oE,F.e);
-  const cap=wR2*sR2*eR2;
-  const buyEff=buyBase()*am.buyMult;                             // entry→buy = browse × close, audience-weighted
-  const perDay=blend*6*hrs, entr=perDay*cap, tx=entr*buyEff;     // footfall → capture → buy
+  const cap=wR2*sR2*eR2;                                         // capture = ① × ② × ③
+  const brBase=ov(s.oBr,browseRate()), clBase=ov(s.oCl,closeRate()); // ④ browse, ⑤ buy — per-street editable
+  const buyEff=brBase*clBase*am.buyMult*gm.buyMult;              // entry→sale, audience- & gender-weighted
+  const perDay=blend*6*hrs, entr=perDay*cap, tx=entr*buyEff;     // footfall → capture → conversion → sales
   const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 passers
-  return {perDay,entr,tx,cap,w:wR2,s:sR2,e:eR2,dW:F.w,dS:F.s,dE:F.e,buyEff,eff,touristPct:am.touristPct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
+  return {perDay,entr,tx,cap,w:wR2,s:sR2,e:eR2,dW:F.w,dS:F.s,dE:F.e,br:brBase,cl:clBase,dBr:browseRate(),dCl:closeRate(),buyEff,eff,touristPct:am.touristPct,femalePct:gm.femalePct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
 }
 /* ---- Street ranking leaderboard: streets ordered by modeled footfall→sales ---- */
 function streetRankCard(){
@@ -1398,10 +1410,10 @@ function streetRankCard(){
   const trap=byFoot.slice(0,topFootN).filter(o=>o.k.vsPlan<0.85).map(o=>o.s.name);
   const tier=v=>v>=1?['ok','clears plan']:v>=0.7?['review','near plan']:['elim','below plan'];
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street ranking — footfall → sales <span class="badge">the decision layer</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The capture is broken into its consumer-behaviour steps (<b>① Notice → ② Look → ③ Enter</b>), and <b>the table itself is editable</b>: change any street's <b>Type</b> or type a number into its <b>①②③</b> cells to override that street (blank = the street-type default, shown as the faint placeholder), or edit the global rates in the strip below — the ranking re-sorts live either way. Footfall is edited in the streets table further down. <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The whole funnel is broken into its consumer-behaviour steps and <b>every step is editable per street</b>: <b>capture</b> = ① Notice → ② Look → ③ Enter, then <b>conversion</b> = ④ Browse → ⑤ Buy (weighted by the street's audience &amp; <b>shopper gender mix</b>). Type a number into any ①–⑤ or <b>% ♀</b> cell to override that street (blank = the derived default, shown as the faint placeholder), or edit the global rates in the strip below — the ranking re-sorts live. <b>Sales/day = Footfall × Capture × Conversion.</b> <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
   // editable global assumptions — partners can play with these
-  h+=`<div style="background:#F7F6FC;border-radius:8px;padding:10px 12px;margin:0 0 12px"><p class="muted" style="font-size:11.5px;margin:0 0 7px"><b>Capture &amp; conversion assumptions</b> — edit any rate and the ranking recomputes instantly. Capture = ① × ② × ③ (then re-weighted by each street's type); buy = ④ × ⑤. Per-type multipliers &amp; audience live in the Footfall model card below.</p><div style="display:flex;flex-wrap:wrap;gap:14px">`+[["windowRate","① Notices %"],["stopRate","② Looks %"],["entryRate","③ Enters %"],["browseRate","④ Browses %"],["closeRate","⑤ Buys %"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${esc(l)}</label><input class="num" style="width:58px" type="number" step="any" value="${locSettings[k]??''}" onchange="updLocSetting('${k}',this.value)"></div>`).join('')+`</div></div>`;
-  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th></tr></thead><tbody>`;
+  h+=`<div style="background:#F7F6FC;border-radius:8px;padding:10px 12px;margin:0 0 12px"><p class="muted" style="font-size:11.5px;margin:0 0 7px"><b>Capture, conversion &amp; audience assumptions</b> — edit any rate and the ranking recomputes instantly. Capture = ① × ② × ③ (re-weighted by street type); conversion = ④ × ⑤ (re-weighted by tourist/local mix and by shopper gender). Because HappyNes' colourful, personalised charms skew female, a higher <b>% ♀</b> lifts the buy rate (♀ buy × vs ♂ buy ×). Per-type &amp; tourist/local multipliers live in the Footfall model card below.</p><div style="display:flex;flex-wrap:wrap;gap:14px">`+[["windowRate","① Notices %"],["stopRate","② Looks %"],["entryRate","③ Enters %"],["browseRate","④ Browses %"],["closeRate","⑤ Buys %"],["femalePct","Default % ♀"],["buyFemale","♀ buy ×"],["buyMale","♂ buy ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${esc(l)}</label><input class="num" style="width:58px" type="number" step="any" value="${locSettings[k]??''}" onchange="updLocSetting('${k}',this.value)"></div>`).join('')+`</div></div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th title="Female share of passing footfall — lifts the buy rate">% ♀</th><th title="Browses the store (given entry)">④ Browse</th><th title="Buys (given browse)">⑤ Buy</th><th title="Entry → sale conversion = ④ × ⑤, weighted by audience & gender">Conversion</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th></tr></thead><tbody>`;
   bySales.forEach((o,i)=>{const s=o.s,k=o.k;const[tc,tl]=tier(k.vsPlan);
     const effW=Math.round(k.eff/maxEff*100);
     const fr=footRank.get(s.id);const trapFlag=(fr<topFootN&&k.vsPlan<0.85)?` <span title="High footfall, weak conversion — the footfall trap" style="color:var(--st-blocked);font-weight:700">⚠ trap</span>`:'';
@@ -1414,6 +1426,10 @@ function streetRankCard(){
     `<td><input class="num" type="number" placeholder="${(k.dS*100).toFixed(1)}" value="${escAttr(s.oL)}" onchange="updStreet('${s.id}','oL',this.value)"></td>`+
     `<td><input class="num" type="number" placeholder="${(k.dE*100).toFixed(0)}" value="${escAttr(s.oE)}" onchange="updStreet('${s.id}','oE',this.value)"></td>`+
     `<td style="font-weight:700">${(k.cap*100).toFixed(2)}%</td>`+
+    `<td><input class="num" type="number" min="0" max="100" placeholder="${locSettings.femalePct??55}" value="${escAttr(s.gPct)}" onchange="updStreet('${s.id}','gPct',this.value)"></td>`+
+    `<td><input class="num" type="number" placeholder="${(k.dBr*100).toFixed(0)}" value="${escAttr(s.oBr)}" onchange="updStreet('${s.id}','oBr',this.value)"></td>`+
+    `<td><input class="num" type="number" placeholder="${(k.dCl*100).toFixed(0)}" value="${escAttr(s.oCl)}" onchange="updStreet('${s.id}','oCl',this.value)"></td>`+
+    `<td style="font-weight:700;color:var(--brand,#7A5AF8)">${(k.buyEff*100).toFixed(1)}%</td>`+
     `<td style="font-weight:700">${k.tx.toFixed(1)}</td>`+
     `<td style="white-space:nowrap"><span class="flag ${tc}">${Math.round(k.vsPlan*100)}%</span> <span class="muted" style="font-size:11px">${tl}</span></td>`+
     `<td><div style="display:flex;align-items:center;gap:6px"><div style="flex:0 0 60px;height:7px;background:#EEE;border-radius:4px;overflow:hidden"><div style="width:${effW}%;height:100%;background:var(--brand,#7A5AF8)"></div></div><span style="font-weight:600">${k.eff.toFixed(1)}</span></div></td></tr>`;});
@@ -1504,14 +1520,14 @@ function locKPI(l){
   const hasWk=l.fwWk!==''&&l.fwWk!=null&&!isNaN(wk), hasWe=l.fwWe!==''&&l.fwWe!=null&&!isNaN(we);
   if(!hasWk&&!hasWe)return null;
   const pos=(l.posFactor!=null&&l.posFactor!=='')?Number(l.posFactor):1;   // micro-location: corner near metro >1, dead mid-block <1
-  const F=funnelRates(l.stype||''); const am=audienceMix(l);
+  const F=funnelRates(l.stype||''); const am=audienceMix(l); const gm=genderMix(l);
   const blend10=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);   // Mon–Sat, Saturday at the weekend rate
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
   // Consumer-behaviour funnel: pass → notice (attention) → stop/look (interest) → enter (decision) → browse (engagement) → buy (purchase)
   const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront
   const notice=perDay*F.w*ff, stop=notice*F.s, entr=stop*F.e; // capture = notice × stop × enter (notice lifted by frontage)
   const brR=browseRate();                                     // % of entrants who actively browse
-  const clEff=closeRate()*am.buyMult;                         // % of browsers who buy, audience-weighted
+  const clEff=closeRate()*am.buyMult*gm.buyMult;              // % of browsers who buy, audience- & gender-weighted
   const browse=entr*brR;
   const tx=browse*clEff;                                      // sales/day
   const buyEff=brR*clEff;                                     // overall entry → buy
@@ -1519,7 +1535,7 @@ function locKPI(l){
   const eurMo=tx*atvEff*days;
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
-  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,capEff:F.cap*ff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
+  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,capEff:F.cap*ff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
 }
 function footfallCard(){
   const conv=locSettings.convRate??18, oph=locSettings.opHours??10;
@@ -1552,6 +1568,8 @@ function footfallCard(){
   h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px"><div class="setrow"><label style="min-width:0">Peak-season × (annualise)</label><input class="num" type="number" step="0.05" value="${locSettings.seasHi??1.25}" onchange="updLocSetting('seasHi',this.value)"></div><div class="setrow"><label style="min-width:0">Low-season ×</label><input class="num" type="number" step="0.05" value="${locSettings.seasLo??0.80}" onchange="updLocSetting('seasLo',this.value)"></div><div class="setrow"><label style="min-width:0">Baseline frontage (m)</label><input class="num" type="number" step="0.5" value="${locSettings.baseFrontM??5}" onchange="updLocSetting('baseFrontM',this.value)"></div><div class="setrow"><label style="min-width:0">Frontage elasticity</label><input class="num" type="number" step="0.05" value="${locSettings.frontElast??0.5}" onchange="updLocSetting('frontElast',this.value)"></div><div class="setrow"><label style="min-width:0"><b>Effective capture (neutral)</b></label><input class="num" type="number" value="${(capEff*100).toFixed(2)}" disabled style="background:#F0EEF9;font-weight:700"></div></div><p class="muted" style="font-size:11px;margin:-4px 0 10px">Frontage: a unit's window width (set per unit in Details) scales its notice/look steps vs the baseline — elasticity ${locSettings.frontElast??0.5} means a 2× wider window lifts capture ~${(Math.pow(2,locSettings.frontElast??0.5)*100-100).toFixed(0)}% (bounded ×0.6–×1.6).</p>`;
   // audience-mix conversion layer
   h+=`<p class="sectiontitle" style="margin:14px 0 4px;font-size:13px">Audience mix — buy-rate & spend by tourist vs local</p><p class="muted" style="font-size:11.5px;margin:0 0 8px">These multipliers apply to the ⑤ buy step (given browse) and average spend. Set each unit's <b>Tourist mix %</b> in Details (or leave blank to use the street-type default below). Tourist × below 1 on buy = browses more, closes less; local × above 1 = comes with intent.</p><div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:4px">`+[["buyTourist","Tourist buy ×"],["buyLocal","Local buy ×"],["atvTourist","Tourist spend ×"],["atvLocal","Local spend ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="0.05" value="${locSettings[k]??({buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97})[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
+  // gender-mix conversion layer
+  h+=`<p class="sectiontitle" style="margin:14px 0 4px;font-size:13px">Shopper gender mix — buy-rate by female vs male</p><p class="muted" style="font-size:11.5px;margin:0 0 8px">HappyNes' colourful, personalised charms skew female, so the <b>share of female footfall</b> lifts the ⑤ buy step. Set each street's <b>% ♀</b> in the ranking table (or each unit's <b>Female %</b> in Details); blank uses the default below. ♀ buy × above 1 = converts well above the base rate; ♂ buy × below 1 = browses more, buys less. A street that skews female is worth more per entrant even at the same footfall.</p><div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:4px">`+[["femalePct","Default female %"],["buyFemale","♀ buy ×"],["buyMale","♂ buy ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="${k==='femalePct'?'1':'0.05'}" value="${locSettings[k]??({femalePct:55,buyFemale:1.35,buyMale:0.55})[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
   h+=`<div class="grid g4" style="margin-bottom:6px">
     <div class="card stat"><span class="k">Plan target</span><span class="v">${planTx} sales/day</span><span class="sub">Year 1 · €${atv} ATV × ${days} days</span></div>
     <div class="card stat"><span class="k">Entrants needed</span><span class="v">${Math.round(reqEntrDay)}/day</span><span class="sub">at ${(buyEffN*100).toFixed(0)}% buy (browse×close)</span></div>
@@ -1584,7 +1602,7 @@ function locDrawer(l){
       d+=`<div class="chkitem"><span>${esc(it)}</span><select class="sel chksel ${v==='⚠'?'warn':v==='✓'?'good':''}" onchange="updLocCheck('${l.id}','${key}',this.value)"><option value=""></option><option ${v==='✓'?'selected':''}>✓</option><option ${v==='⚠'?'selected':''}>⚠</option><option ${v==='n/a'?'selected':''}>n/a</option></select></div>`;});
     d+=`</div>`;});
   d+=`</div>`;
-  d+=`<div class="crmrow" style="margin-top:12px"><label>Position</label>${selOpts(['','Corner','Mid-block','Plaza-facing','Feeder street'],l.posType,`updLoc('${l.id}','posType',this.value)`)}<label>Street type</label><select class="sel" onchange="updLoc('${l.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((l.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select><label>Tourist mix %</label><input class="num" style="width:60px" type="number" min="0" max="100" placeholder="${DEFAULT_TOURIST[l.stype||'']??40}" value="${escAttr(l.touristPct)}" onchange="updLoc('${l.id}','touristPct',this.value)"><label>Position factor</label><input class="num" style="width:54px" type="number" step="0.05" value="${escAttr(l.posFactor)}" onchange="updLoc('${l.id}','posFactor',this.value)"></div>`;
+  d+=`<div class="crmrow" style="margin-top:12px"><label>Position</label>${selOpts(['','Corner','Mid-block','Plaza-facing','Feeder street'],l.posType,`updLoc('${l.id}','posType',this.value)`)}<label>Street type</label><select class="sel" onchange="updLoc('${l.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((l.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select><label>Tourist mix %</label><input class="num" style="width:60px" type="number" min="0" max="100" placeholder="${DEFAULT_TOURIST[l.stype||'']??40}" value="${escAttr(l.touristPct)}" onchange="updLoc('${l.id}','touristPct',this.value)"><label>Female %</label><input class="num" style="width:60px" type="number" min="0" max="100" placeholder="${locSettings.femalePct??55}" value="${escAttr(l.gPct)}" onchange="updLoc('${l.id}','gPct',this.value)"><label>Position factor</label><input class="num" style="width:54px" type="number" step="0.05" value="${escAttr(l.posFactor)}" onchange="updLoc('${l.id}','posFactor',this.value)"></div>`;
   d+=`<div class="crmrow" style="margin-top:8px"><label>Metro / anchors nearby</label><input class="txt" style="min-width:220px" value="${escAttr(l.posInfo)}" onchange="updLoc('${l.id}','posInfo',this.value)"></div>`;
   d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Position factor scales footfall for the exact spot (corner / metro-adjacent ≈ 1.1–1.3; dead mid-block ≈ 0.7–0.9; default 1.0). <b>Tourist mix %</b> sets the audience split that drives buy-rate & spend — leave blank to use the street-type default (shown as the placeholder).</p>`;
   d+=`<div class="crmrow" style="margin-top:10px"><label>Footfall — weekday /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWk)}" onchange="updLoc('${l.id}','fwWk',this.value)"><label>Weekend /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWe)}" onchange="updLoc('${l.id}','fwWe',this.value)"><label>Busy hrs/day</label><input class="num" style="width:56px" type="number" value="${escAttr(l.fwHrs)}" onchange="updLoc('${l.id}','fwHrs',this.value)"><label>Frontage / window (m)</label><input class="num" style="width:60px" type="number" step="0.5" placeholder="${locSettings.baseFrontM??5}" value="${escAttr(l.frontM)}" onchange="updLoc('${l.id}','frontM',this.value)"><label>Peak times seen</label><input class="txt" value="${escAttr(l.fwPeak)}" onchange="updLoc('${l.id}','fwPeak',this.value)"></div>`;
@@ -1695,8 +1713,8 @@ function viewLocation(){
 
 /* ---- PIPELINES (B2B / Promo) ---- */
 const PIPE={
- b2b:{label:"B2B",entity:"account",valueLabel:"Est. annual value",types:["Boutique","Hotel","Concept store","Gift shop","Department store","Other"],stages:["Prospect","Contacted","Sampled","Negotiating","Won","Lost"],crit:["Brand fit","Footfall / location","Buying power / order size","Reorder potential","Access / ease to win"],settings:{weights:[0.25,0.20,0.25,0.20,0.10],hiFit:4,medFit:3,hiVal:5000,medVal:2000},rows:[]},
- promo:{label:"Promotional",entity:"opportunity",valueLabel:"Est. contract value",types:["Tech","Hotel / Hospitality","Events / Agency","Corporate","Retail","Other"],useCases:["Corporate gift","Event","Campaign","Welcome kit","Other"],stages:["Lead","Briefed","Quoted","Sampling","Won","Lost"],crit:["Brand fit","Volume / units potential","Margin / value","Repeat potential","Lead-time feasibility"],settings:{weights:[0.20,0.25,0.25,0.20,0.10],hiFit:4,medFit:3,hiVal:5000,medVal:2000},rows:[]}
+ b2b:{label:"B2B",entity:"account",valueLabel:"Est. annual value",types:["Boutique","Hotel","Concept store","Gift shop","Department store","Other"],stages:["Prospect","Contacted","Sampled","Negotiating","Won","Lost"],crit:["Brand fit","Footfall / location","Buying power / order size","Reorder potential","Access / ease to win"],settings:{weights:[0.25,0.20,0.25,0.20,0.10],hiFit:4,medFit:3,hiVal:5000,medVal:2000,conv:{top:80,rates:[60,45,55,55],valuePer:3500,target:14,horizon:"Year 1",note:""}},rows:[]},
+ promo:{label:"Promotional",entity:"opportunity",valueLabel:"Est. contract value",types:["Tech","Hotel / Hospitality","Events / Agency","Corporate","Retail","Other"],useCases:["Corporate gift","Event","Campaign","Welcome kit","Other"],stages:["Lead","Briefed","Quoted","Sampling","Won","Lost"],crit:["Brand fit","Volume / units potential","Margin / value","Repeat potential","Lead-time feasibility"],settings:{weights:[0.20,0.25,0.25,0.20,0.10],hiFit:4,medFit:3,hiVal:5000,medVal:2000,conv:{top:90,rates:[55,60,50,45],valuePer:5000,target:9,horizon:"Year 1",note:""}},rows:[]}
 };
 function pipeFit(r,w){const filled=r.scores.filter(x=>x!==""&&x!=null).length;if(!filled)return null;let s=0;w.forEach((wi,i)=>s+=(Number(r.scores[i])||0)*wi);return s;}
 function pipePriority(fit,val,set){if(fit==null)return"";const v=Number(val)||0;if(fit>=set.hiFit&&v>=set.hiVal)return"High";if(fit>=set.medFit||v>=set.medVal)return"Med";return"Low";}
@@ -1707,6 +1725,36 @@ function updPipe(k,id,f,v){const r=PIPE[k].rows.find(x=>x.id===id);r[f]=(f==='va
 function updPipeScore(k,id,i,v){const r=PIPE[k].rows.find(x=>x.id===id);r.scores[i]=v===""?"":Number(v);render();}
 function addPipe(k){PIPE[k].rows.push({id:"P"+(_pid++),account:"",type:"",useCase:"",scores:Array(PIPE[k].crit.length).fill(""),value:"",stage:"",owner:"",notes:""});render();}
 function rmPipe(k,id){PIPE[k].rows=PIPE[k].rows.filter(x=>x.id!==id);render();}
+/* ---- Lead → sale conversion funnel (B2B / Promo) ---- */
+function convDefaults(k){return k==='b2b'?{top:80,rates:[60,45,55,55],valuePer:3500,target:14,horizon:"Year 1",note:""}:{top:90,rates:[55,60,50,45],valuePer:5000,target:9,horizon:"Year 1",note:""};}
+function pipeConv(k){const s=PIPE[k].settings;if(!s.conv||!Array.isArray(s.conv.rates)||s.conv.rates.length!==4)s.conv=convDefaults(k);return s.conv;}
+function normalizePipeConv(){['b2b','promo'].forEach(k=>{const s=PIPE[k].settings;if(!s.conv||!Array.isArray(s.conv.rates)||s.conv.rates.length!==4){s.conv=convDefaults(k);}else{const d=convDefaults(k);['top','valuePer','target','horizon'].forEach(f=>{if(s.conv[f]==null)s.conv[f]=d[f];});if(typeof s.conv.note!=='string')s.conv.note="";}});}
+function updConv(k,f,v){const c=pipeConv(k);c[f]=(f==='horizon'||f==='note')?v:(v===''?'':Number(v));render();}
+function updConvRate(k,i,v){const c=pipeConv(k);c.rates[i]=v===''?'':Number(v);render();}
+function computeConv(k){const P=PIPE[k],c=pipeConv(k);const stages=P.stages.filter(s=>s!=='Lost');const top=Number(c.top)||0;const counts=[top];let n=top;for(let i=0;i<c.rates.length;i++){n=n*((Number(c.rates[i])||0)/100);counts.push(n);}const wins=counts[counts.length-1];const overall=top>0?wins/top:0;const vper=Number(c.valuePer)||0;const rev=wins*vper;const target=Number(c.target)||0;const targetRev=target*vper;const needTop=overall>0?target/overall:null;const live={};stages.forEach(s=>live[s]=P.rows.filter(r=>r.stage===s).length);return {stages,counts,wins,overall,rev,target,targetRev,needTop,live,liveTotal:P.rows.length,top,vper};}
+function convFunnelCard(k){const P=PIPE[k],c=pipeConv(k),C=computeConv(k);const col=k==='b2b'?segColor('B2B'):segColor('Promotional');const entity=k==='b2b'?'accounts':'contracts';const one=k==='b2b'?'account':'contract';
+  let h=`<div class="card" style="margin-top:16px;border-top:4px solid ${col}"><p class="sectiontitle" style="color:${col}">Lead → sale conversion funnel</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 12px">How many ${entity} the prospect pipeline is expected to yield. Set the top-of-funnel and the conversion rate at each stage — the model compounds them into expected wins and reconciles to your ${esc(c.horizon)} target. <b>Live now</b> is the actual count sitting in each stage of the pipeline above.</p>`;
+  h+=`<div class="grid g4" style="margin-bottom:14px">
+    <div class="card stat"><span class="k">Overall conversion</span><span class="v">${(C.overall*100).toFixed(1)}%</span><span class="sub">prospect → won</span></div>
+    <div class="card stat"><span class="k">Expected wins</span><span class="v">${C.wins.toFixed(1)}</span><span class="sub">from ${C.top} top-of-funnel</span></div>
+    <div class="card stat"><span class="k">Expected revenue</span><span class="v">${eur(C.rev)}</span><span class="sub">${C.wins.toFixed(1)} × ${eur(C.vper)}</span></div>
+    <div class="card stat"><span class="k">Target (${esc(c.horizon)})</span><span class="v" style="color:${C.wins>=C.target?'var(--st-done)':'var(--st-inprogress)'}">${C.target} ${entity}</span><span class="sub">${C.wins>=C.target?'on track':'gap '+(C.target-C.wins).toFixed(1)}</span></div></div>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Stage</th><th>Conv from prev</th><th>Modelled count</th><th>Live now</th></tr></thead><tbody>`;
+  C.stages.forEach((s,i)=>{const cnt=C.counts[i];
+    const rateCell=i===0
+      ?`<td><input class="num" style="width:74px" type="number" value="${c.top}" onchange="updConv('${k}','top',this.value)"> <span class="muted" style="font-size:11px">top of funnel</span></td>`
+      :`<td><input class="num" style="width:60px" type="number" min="0" max="100" value="${c.rates[i-1]}" onchange="updConvRate('${k}',${i-1},this.value)"> <span class="muted" style="font-size:11px">%</span></td>`;
+    h+=`<tr><td><b>${esc(s)}</b></td>${rateCell}<td><b>${i===0?cnt:cnt.toFixed(1)}</b></td><td class="muted">${C.live[s]}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<div class="grid g4" style="margin-top:14px">
+    <div class="card stat"><span class="k">€ per ${one}</span><span class="v">${eur(C.vper)}</span><span class="sub"><input class="num" style="width:84px" type="number" value="${c.valuePer}" onchange="updConv('${k}','valuePer',this.value)"></span></div>
+    <div class="card stat"><span class="k">Target wins</span><span class="v"><input class="num" style="width:60px" type="number" value="${c.target}" onchange="updConv('${k}','target',this.value)"></span><span class="sub">${eur(C.targetRev)} at target</span></div>
+    <div class="card stat"><span class="k">Prospects to hit target</span><span class="v">${C.needTop!=null?Math.ceil(C.needTop):'—'}</span><span class="sub">at ${(C.overall*100).toFixed(1)}% overall</span></div>
+    <div class="card stat"><span class="k">Live pipeline</span><span class="v">${C.liveTotal}</span><span class="sub">${entity} loaded now</span></div></div>`;
+  h+=`<div style="margin-top:10px"><label class="bb">Notes / assumptions</label>`+taField(c.note,`updConv('${k}','note',this.value)`,k==='b2b'?"e.g. contact rate leans on warm hotel intros; sampling is the main drop-off":"e.g. quoting is fast but sampling lead-time loses event deals")+`</div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:8px">A planning lens — it does not overwrite Finance. Compare expected revenue <b>${eur(C.rev)}</b> with the Year-1 ${k==='b2b'?'B2B':'Promo'} floor in Finance (<b>${eur(k==='b2b'?(fin.b2b1||0):(fin.promo1||0))}</b>). If expected wins fall short of target, widen the top-of-funnel or lift the weakest stage rate — the funnel shows which stage is costing you most.</p>`;
+  h+=`</div>`;return h;}
 function viewPipe(k){
   const P=PIPE[k];const names=team.filter(m=>m.id!=='un').map(m=>m.name);
   let h=`<h2 class="view">${P.label} pipeline</h2><p class="viewsub">Score each ${P.entity} on 5 fit criteria → weighted Fit and auto Priority. Won deals feed the segment roll-up and Year-1 revenue in Finance.</p>`;
@@ -1730,6 +1778,7 @@ function viewPipe(k){
   h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addPipe('${k}')">+ Add ${P.entity}</button></div>`;
   const won=P.rows.filter(r=>r.stage==='Won').length,openV=P.rows.filter(r=>r.stage!=='Won'&&r.stage!=='Lost').reduce((a,r)=>a+(Number(r.value)||0),0),high=P.rows.filter(r=>pipePriority(pipeFit(r,P.settings.weights),r.value,P.settings)==='High').length;
   h+=`<div class="legend" style="margin-top:12px;font-size:13px"><span><b>${P.rows.length}</b> ${P.entity}s</span><span>⭐ <b>${P.rows.filter(r=>r.wave).length}</b> first wave</span><span>🔴 <b>${high}</b> high priority</span><span><b>${eur(openV)}</b> open pipeline</span><span>✅ <b>${won}</b> won</span></div></div>`;
+  h+=convFunnelCard(k);
   return h;
 }
 
@@ -2509,7 +2558,7 @@ const SB_URL="https://rkwbvfjdliwzdjyiapqr.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrd2J2ZmpkbGl3emRqeWlhcHFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNDA5MzcsImV4cCI6MjA5NTYxNjkzN30.PLriq-du76jRigm9gjaPL9A9b3IkCojStluh1fIym_s";
 let sb=null, me="", clientId="c"+Math.random().toString(36).slice(2,9), syncReady=false, lastSavedJson=null, saveTimer=null, dirty=false, hbSubscribed=false;
 function collectState(){return {team,tasks,processes,locSettings,locListings,locAreas,locStreets,b2b:{rows:PIPE.b2b.rows,settings:PIPE.b2b.settings},promo:{rows:PIPE.promo.rows,settings:PIPE.promo.settings},fin,market,fitout,brand,launch,outreach,sourcing,growth,vision,log,segModels,finMonthly};}
-function applyState(d){if(!d)return;if(d.team)team=d.team;if(d.tasks)tasks=d.tasks;if(d.processes)processes=d.processes;if(d.locSettings)locSettings=d.locSettings;if(d.locListings)locListings=d.locListings;if(d.locAreas&&Array.isArray(d.locAreas)&&d.locAreas.length)locAreas=d.locAreas;if(Array.isArray(d.locStreets))locStreets=d.locStreets;if(d.b2b){if(d.b2b.rows)PIPE.b2b.rows=d.b2b.rows;if(d.b2b.settings)PIPE.b2b.settings=d.b2b.settings;}if(d.promo){if(d.promo.rows)PIPE.promo.rows=d.promo.rows;if(d.promo.settings)PIPE.promo.settings=d.promo.settings;}if(d.fin)fin=d.fin;if(d.market)market=d.market;if(d.fitout)fitout=normalizeFitout(d.fitout);if(d.brand)brand=normalizeBrand(d.brand);if(d.launch)launch=normalizeLaunch(d.launch);if(d.outreach)outreach=normalizeOutreach(d.outreach);if(d.sourcing)sourcing=normalizeSourcing(d.sourcing);if(d.growth)growth=normalizeGrowth(d.growth);if(d.vision)vision=normalizeVision(d.vision);if(Array.isArray(d.log))log=d.log;if(d.segModels)segModels=normalizeSegModels(d.segModels);if(d.finMonthly)finMonthly=normalizeMonthly(d.finMonthly);}
+function applyState(d){if(!d)return;if(d.team)team=d.team;if(d.tasks)tasks=d.tasks;if(d.processes)processes=d.processes;if(d.locSettings)locSettings=d.locSettings;if(d.locListings)locListings=d.locListings;if(d.locAreas&&Array.isArray(d.locAreas)&&d.locAreas.length)locAreas=d.locAreas;if(Array.isArray(d.locStreets))locStreets=d.locStreets;if(d.b2b){if(d.b2b.rows)PIPE.b2b.rows=d.b2b.rows;if(d.b2b.settings)PIPE.b2b.settings=d.b2b.settings;}if(d.promo){if(d.promo.rows)PIPE.promo.rows=d.promo.rows;if(d.promo.settings)PIPE.promo.settings=d.promo.settings;}normalizePipeConv();if(d.fin)fin=d.fin;if(d.market)market=d.market;if(d.fitout)fitout=normalizeFitout(d.fitout);if(d.brand)brand=normalizeBrand(d.brand);if(d.launch)launch=normalizeLaunch(d.launch);if(d.outreach)outreach=normalizeOutreach(d.outreach);if(d.sourcing)sourcing=normalizeSourcing(d.sourcing);if(d.growth)growth=normalizeGrowth(d.growth);if(d.vision)vision=normalizeVision(d.vision);if(Array.isArray(d.log))log=d.log;if(d.segModels)segModels=normalizeSegModels(d.segModels);if(d.finMonthly)finMonthly=normalizeMonthly(d.finMonthly);}
 function setStatus(s){const el=document.getElementById('syncbadge');if(!el)return;const map={live:['#1FA97A','● Live'],saving:['#3E7BFA','⟳ Saving…'],offline:['#9AA0B4','○ Offline'],error:['#EF4444','● Error']};const[c,txt]=map[s]||map.offline;el.style.background=c;el.textContent=txt;}
 function scheduleSave(){if(!syncReady)return;const json=JSON.stringify(collectState());if(json===lastSavedJson)return;clearTimeout(saveTimer);saveTimer=setTimeout(()=>doSave(json),700);}
 async function doSave(json){lastSavedJson=json;saveLocalCache(json);if(!sb||!navigator.onLine){dirty=true;setOfflineStatus();return;}setStatus('saving');try{const{error}=await sb.from('happybcn_workspace').upsert({id:'main',data:JSON.parse(json),updated_at:new Date().toISOString(),updated_by:me,client_id:clientId});if(error){dirty=true;setStatus('error');}else{dirty=false;setStatus('live');}}catch(e){dirty=true;setOfflineStatus();}}
