@@ -570,7 +570,29 @@ function render(){
   else if(view==="outreach") m.innerHTML=viewOutreach();
   else if(view==="team") m.innerHTML=viewTeam();
   else if(view==="growth") m.innerHTML=viewGrowth();
+  upgradeBoxes(m);
   if(typeof scheduleSave==='function') scheduleSave();
+}
+/* Global readability upgrade: turn every free-text single-line field into an auto-sizing
+   box (grows to fit content, wraps long text) so nothing is clipped on any tab / on mobile.
+   Runs after each render; scoped to the main view. Numbers, dates and selects are untouched. */
+function upgradeBoxes(root){
+  if(!root||!root.querySelectorAll)return;
+  root.querySelectorAll('input.txt').forEach(inp=>{
+    const t=(inp.getAttribute('type')||'text').toLowerCase();
+    if(t==='date'||t==='number'||inp.dataset.noup!=null)return;
+    const ta=document.createElement('textarea');
+    ta.className='taf';
+    ta.value=inp.value;
+    const ph=inp.getAttribute('placeholder'); if(ph)ta.setAttribute('placeholder',ph);
+    const oc=inp.getAttribute('onchange'); if(oc)ta.setAttribute('onchange',oc);
+    if(inp.style.fontWeight)ta.style.fontWeight=inp.style.fontWeight;
+    if(inp.style.marginBottom)ta.style.marginBottom=inp.style.marginBottom;
+    ta.rows=1;                                  // field-sizing grows it to content; 1 = single-line floor
+    // keep a field-like feel: Enter confirms (blur) instead of inserting a newline
+    ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ta.blur();}});
+    inp.replaceWith(ta);
+  });
 }
 
 /* ---------- Executive summary ---------- */
