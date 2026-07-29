@@ -536,7 +536,7 @@ function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">"
 
 /* ============================ RENDER ============================ */
 function renderTabs(){
-  const tabs=[["summary","Summary"],["vision","Vision"],["dashboard","Dashboard & Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
+  const tabs=[["summary","Summary & Vision"],["dashboard","Dashboard & Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
   $("#tabbar").innerHTML = tabs.map(([id,label])=>
     `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("");
 }
@@ -625,6 +625,8 @@ function viewSummary(){
    <p style="line-height:1.7;font-size:14px"><b>Status — pre-launch.</b> Strategy, financials, tooling and launch assets are complete across all 8 stages; the business is ready to execute. What remains is real-world, not planning:</p>
    <p style="line-height:1.9;font-size:14px">① <b>Sign a store unit &amp; set the opening date</b> — fills every placeholder in the launch kit &amp; unlocks the timeline.<br>② <b>Form &amp; fund the SL</b> — deposit the ${eur(fin.equity)}, open a bank account, engage a gestoría.<br>③ <b>Confirm HQ terms &amp; place the first stock order</b> (~2–3 weeks before opening).<br>④ <b>Work the first-wave leads</b> and drive pre-launch sign-ups.</p></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Links</p><p style="font-size:13px;line-height:1.6">Public pre-launch sign-up page: <b>happybcn-comingsoon.netlify.app</b> · Full plans &amp; models live in the shared Google Drive (Vision &amp; Strategy, Segment models, Financial model, GTM &amp; Launch, Sourcing &amp; Ops, Growth &amp; Scale). Every tab in this workspace is editable and syncs live between devices.</p></div>`;
+ // integrated: the full vision & strategy follows the summary in the same tab
+ h+=`<div style="margin-top:28px;border-top:1px solid var(--line);padding-top:20px"></div>`+viewVision();
  return h;
 }
 
