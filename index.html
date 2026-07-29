@@ -1537,6 +1537,27 @@ function locKPI(l){
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
   return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,capEff:F.cap*ff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
 }
+/* ---- Reference: footfall figures + their provenance, shown below the street tables ---- */
+function footfallRefCard(){
+  if(!locStreets.length) return '';
+  const meas=locStreets.filter(s=>s.src==='data').length, est=locStreets.length-meas;
+  const rows=locStreets.map(s=>{
+    const wk=Number(s.sfWk), we=Number(s.sfWe);
+    const hasWk=s.sfWk!==''&&s.sfWk!=null&&!isNaN(wk), hasWe=s.sfWe!==''&&s.sfWe!=null&&!isNaN(we);
+    const blend=(hasWk&&hasWe)?(wk*5+we)/6:(hasWk?wk:(hasWe?we:0));
+    const hrs=(s.hrs!=null&&s.hrs!=='')?Number(s.hrs):(locSettings.opHours??10);
+    return {s,wk:hasWk?wk:null,we:hasWe?we:null,hrs,perDay:blend*6*hrs};
+  }).sort((a,b)=>b.perDay-a.perDay);
+  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Footfall data &amp; sources <span class="badge">reference</span></p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Where the footfall behind the ranking comes from, per street. <b>Measured</b> = read off Google Maps <i>popular times</i> for a named anchor on the street (a proxy curve, not a turnstile count); <b>Estimate</b> = street-knowledge judgement. The per-10-minute weekday (<b>Wk</b>) and weekend (<b>We</b>) figures convert to <b>≈ footfall/day</b> as <b>blend × 6 × busy hours</b>, where the blend weights Mon–Sat 5:1 with Saturday at the weekend rate. <b>${meas}</b> of ${locStreets.length} streets are anchored to a popular-times read; <b>${est}</b> are estimates. Every figure is provisional until a real on-street count replaces it — a 10-min weekday + Saturday tally on your top 3–4 streets is the single highest-value validation.</p>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Street</th><th>Area</th><th>Source</th><th>Wk /10min</th><th>We /10min</th><th>Busy hrs</th><th>≈ Footfall/day</th><th>Basis</th></tr></thead><tbody>`;
+  rows.forEach(({s,wk,we,hrs,perDay})=>{
+    const badge=(s.src==='data')?`<span class="flag ok">Measured</span>`:`<span class="flag review">Estimate</span>`;
+    h+=`<tr><td style="min-width:150px"><b>${esc(s.name||'—')}</b></td><td class="muted">${esc(s.area||'')}</td><td style="white-space:nowrap">${badge}</td><td>${wk!=null?wk:'—'}</td><td>${we!=null?we:'—'}</td><td>${hrs}</td><td style="font-weight:700">${num(perDay)}</td><td class="muted" style="white-space:normal;min-width:240px;font-weight:400;font-size:12px">${esc(s.note||'')}</td></tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<p class="muted" style="font-size:12px;margin-top:10px"><b>Assumption sources.</b> Footfall as above. <b>Capture</b> (① notice × ② look × ③ enter ≈ 2%) is a deliberately conservative read for a new brand on a secondary street — published capture rates run higher (~6–8% in an Ariadne fashion-retail case, ~10% in a Vemco illustration) but for established brands on prime pitches, and there is no reliable cross-industry benchmark. <b>Conversion</b> (④ browse ~70% × ⑤ buy ~26%) sits in the typical specialty-retail range. <b>Gender &amp; audience</b> weights are directional — from HappyNes' female-skewing, colourful-accessory buyer profile and each street's tourist/local character — not measured. The full reality-check and the editable multipliers live in the Footfall → sales model card below.</p></div>`;
+  return h;
+}
 function footfallCard(){
   const conv=locSettings.convRate??18, oph=locSettings.opHours??10;
   const wR=locSettings.windowRate??35, sR=locSettings.stopRate??15, eR=locSettings.entryRate??38;
@@ -1672,6 +1693,7 @@ function viewLocation(){
   h+=`<tr class="subhdr"><td>Weighted fit /5</td><td></td>`+afits.map(f=>`<td>${f!=null?f.toFixed(1):'—'}</td>`).join("")+`</tr></tbody></table></div></div>`;
   h+=streetRankCard();
   h+=streetsCard();
+  h+=footfallRefCard();
   const S=[["maxRent","Max monthly rent (€)"],["sizeMin","Size min (m²)"],["sizeMax","Size max (m²)"],["maxM2","Max €/m²/mo"],["maxUpfrontMo","Max upfront (months)"],["maxTraspaso","Max traspaso (€)"]];
   h+=`<div class="card"><p class="sectiontitle">Settings — budget & thresholds</p><div style="display:flex;flex-wrap:wrap;gap:16px">`+S.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" value="${locSettings[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div></div>`;
   h+=footfallCard();
