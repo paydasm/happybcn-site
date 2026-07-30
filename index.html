@@ -2109,7 +2109,7 @@ function viewPipe(k){
 }
 
 /* ---- FINANCE ---- */
-let fin={atv:28,tx1:28,tx2:38,tx3:45,days:26,smo1:10,ord1:300,ord2:600,ord3:850,aov:38,omo1:8,acc2:40,acc3:70,racc:3500,con2:20,con3:35,rcon:4000,mR:0.62,mB:0.45,mP:0.40,rent:2400,esc:0.03,util:500,mkt:0.10,pay:0.015,ship:4,soft:500,gest:300,ins:200,adm:600,ss:1.31,mgr:30000,ast:19000,ops:30000,sal:28000,na1:2,na2:3,na3:4,ramp:0.75,ctx12:0.15,ctx3:0.25,dep:5,equity:200000,startup:{fitout:45000,pos:3000,inv:40000,ecom:8000,legal:8000,deposit:9600,mktlaunch:10000,wc:15000,cont:11000}};
+let fin={atv:28,tx1:28,tx2:38,tx3:45,days:26,smo1:10,ord1:300,ord2:600,ord3:850,aov:38,omo1:8,acc2:40,acc3:70,racc:3500,con2:20,con3:35,rcon:4000,mR:0.62,mB:0.45,mP:0.40,rent:2400,esc:0.03,util:500,mkt:0.10,pay:0.015,ship:4,soft:500,gest:300,ins:200,adm:600,ss:1.31,mgr:30000,ast:19000,ops:30000,sal:28000,na1:2,na2:3,na3:4,ramp:0.75,ctx12:0.15,ctx3:0.25,dep:5,mgr1:0,autoMo:300,autoN:1,equity:200000,startup:{fitout:45000,pos:3000,inv:40000,ecom:8000,legal:8000,deposit:9600,mktlaunch:10000,wc:15000,cont:11000}};
 function b2bWonValue(){return PIPE.b2b.rows.filter(r=>r.stage==='Won').reduce((a,r)=>a+(Number(r.value)||0),0);}
 function promoWonValue(){return PIPE.promo.rows.filter(r=>r.stage==='Won').reduce((a,r)=>a+(Number(r.value)||0),0);}
 function computeFinance(ovr){const f=ovr?Object.assign({},fin,ovr):fin;if(ovr&&ovr.startup)f.startup=Object.assign({},fin.startup,ovr.startup);
@@ -2125,17 +2125,20 @@ function computeFinance(ovr){const f=ovr?Object.assign({},fin,ovr):fin;if(ovr&&o
   const gp=rev.map((v,i)=>v-cogs[i]);
   const rent=[f.rent*12,f.rent*12*(1+f.esc),f.rent*12*Math.pow(1+f.esc,2)];
   const util=[f.util*12,f.util*12,f.util*12];
-  const pay=[f.ss*f.ramp*(f.mgr+f.na1*f.ast+f.ops),f.ss*(f.mgr+f.na2*f.ast+f.ops+f.sal),f.ss*(f.mgr+f.na3*f.ast+f.ops+f.sal)];
+  const mgr1=(f.mgr1!=null&&f.mgr1!=='')?Number(f.mgr1):f.mgr;   // Year-1 founder salary — own line so founders can draw €0 at launch
+  const pay=[f.ss*f.ramp*(mgr1+f.na1*f.ast+f.ops),f.ss*(f.mgr+f.na2*f.ast+f.ops+f.sal),f.ss*(f.mgr+f.na3*f.ast+f.ops+f.sal)];
+  const autoYr=(Number(f.autoMo)||0)*12*(Number(f.autoN)||0);   // autónomo societario cuota — mandatory even at €0 salary
+  const autonomo=[autoYr,autoYr,autoYr];
   const mkt=rev.map(v=>f.mkt*v);const ppr=retail.map(v=>f.pay*v);
   const ship=[f.ship*f.ord1*f.omo1,f.ship*f.ord2*12,f.ship*f.ord3*12];
   const soft=[f.soft*12,f.soft*12,f.soft*12],gest=[f.gest*12,f.gest*12,f.gest*12],ins=[f.ins*12,f.ins*12,f.ins*12],adm=[f.adm*12,f.adm*12,f.adm*12];
-  const opex=rent.map((v,i)=>v+util[i]+pay[i]+mkt[i]+ppr[i]+ship[i]+soft[i]+gest[i]+ins[i]+adm[i]);
+  const opex=rent.map((v,i)=>v+util[i]+pay[i]+autonomo[i]+mkt[i]+ppr[i]+ship[i]+soft[i]+gest[i]+ins[i]+adm[i]);
   const ebitda=gp.map((v,i)=>v-opex[i]);const ebit=ebitda.map(v=>v-da);
   const tax=ebit.map((v,i)=>-Math.max(0,v)*(i<2?f.ctx12:f.ctx3));const ni=ebit.map((v,i)=>v+tax[i]);
   const cfops=ni.map((v,i)=>v+da);const open=[f.equity,0,0],close=[0,0,0];
   close[0]=open[0]-startupTotal+cfops[0];open[1]=close[0];close[1]=open[1]+cfops[1];open[2]=close[1];close[2]=open[2]+cfops[2];
-  const be=rev.map((v,i)=>{const fixed=rent[i]+util[i]+pay[i]+soft[i]+gest[i]+ins[i]+adm[i]+da;const cm=(gp[i]-mkt[i]-ppr[i]-ship[i])/v;return cm>0?fixed/cm:0;});
-  return {startupTotal,da,store,online,retail,b2b,promo,rev,cogs,gp,rent,util,pay,mkt,ppr,ship,soft,gest,ins,adm,opex,ebitda,ebit,tax,ni,open,cfops,close,be};
+  const be=rev.map((v,i)=>{const fixed=rent[i]+util[i]+pay[i]+autonomo[i]+soft[i]+gest[i]+ins[i]+adm[i]+da;const cm=(gp[i]-mkt[i]-ppr[i]-ship[i])/v;return cm>0?fixed/cm:0;});
+  return {startupTotal,da,store,online,retail,b2b,promo,rev,cogs,gp,rent,util,pay,autonomo,mkt,ppr,ship,soft,gest,ins,adm,opex,ebitda,ebit,tax,ni,open,cfops,close,be};
 }
 function updFin(k,v){fin[k]=Number(v);render();}
 /* ---- Launch-year monthly ramp ---- */
@@ -2159,7 +2162,7 @@ function updMonthlyNote(v){finMonthly.note=v;render();}
 function computeMonthly(ovr){
  const F=computeFinance(ovr),f=ovr?Object.assign({},fin,ovr):fin;const R=F.retail[0],B=F.b2b[0],P=F.promo[0];const M=finMonthly.months;
  const sR=M.reduce((a,x)=>a+(Number(x.r)||0),0)||1,sB=M.reduce((a,x)=>a+(Number(x.b)||0),0)||1,sP=M.reduce((a,x)=>a+(Number(x.p)||0),0)||1;
- const fixedMo=(F.rent[0]+F.util[0]+F.pay[0]+F.soft[0]+F.gest[0]+F.ins[0]+F.adm[0])/12;
+ const fixedMo=(F.rent[0]+F.util[0]+F.pay[0]+F.autonomo[0]+F.soft[0]+F.gest[0]+F.ins[0]+F.adm[0])/12;
  const startCash=f.equity-F.startupTotal;let cash=startCash;const rows=[];let trough={cash:Infinity,m:'',idx:-1};
  M.forEach((x,i)=>{const rr=(Number(x.r)||0)/sR*R,bb=(Number(x.b)||0)/sB*B,pp=(Number(x.p)||0)/sP*P;const rev=rr+bb+pp;
   const cogs=rr*(1-f.mR)+bb*(1-f.mB)+pp*(1-f.mP);const gp=rev-cogs;const varc=f.mkt*rev+f.pay*rr;const opex=fixedMo+varc;const ebitda=gp-opex;
@@ -2174,12 +2177,12 @@ function viewFinance(){const F=computeFinance();
     <div class="card stat"><span class="k">Year-3 EBITDA</span><span class="v">${eur(F.ebitda[2])}</span></div>
     <div class="card stat"><span class="k">Closing cash Y1</span><span class="v" style="color:${F.close[0]>=0?'var(--st-done)':'var(--st-blocked)'}">${eur(F.close[0])}</span></div></div>`;
   h+=activeLocBanner();
-  const rows=[["Retail — store",F.store,0],["Retail — online",F.online,0],["Retail — total",F.retail,1],["B2B (Y1 live from pipeline)",F.b2b,0],["Promotional (Y1 live from pipeline)",F.promo,0],["TOTAL REVENUE",F.rev,2],["Total COGS",F.cogs,0],["GROSS PROFIT",F.gp,2],["Rent",F.rent,0],["Utilities",F.util,0],["Payroll",F.pay,0],["Marketing",F.mkt,0],["Payment processing",F.ppr,0],["Shipping",F.ship,0],["Software",F.soft,0],["Gestoría",F.gest,0],["Insurance",F.ins,0],["Other admin",F.adm,0],["Total opex",F.opex,1],["EBITDA",F.ebitda,2],["D&A",[F.da,F.da,F.da],0],["EBIT",F.ebit,1],["Tax",F.tax,0],["NET INCOME",F.ni,2],["Opening cash",F.open,0],["Operating cash (NI+D&A)",F.cfops,0],["Closing cash",F.close,1],["Break-even revenue",F.be,0]];
+  const rows=[["Retail — store",F.store,0],["Retail — online",F.online,0],["Retail — total",F.retail,1],["B2B (Y1 live from pipeline)",F.b2b,0],["Promotional (Y1 live from pipeline)",F.promo,0],["TOTAL REVENUE",F.rev,2],["Total COGS",F.cogs,0],["GROSS PROFIT",F.gp,2],["Rent",F.rent,0],["Utilities",F.util,0],["Payroll",F.pay,0],["Autónomo (founders' SS)",F.autonomo,0],["Marketing",F.mkt,0],["Payment processing",F.ppr,0],["Shipping",F.ship,0],["Software",F.soft,0],["Gestoría",F.gest,0],["Insurance",F.ins,0],["Other admin",F.adm,0],["Total opex",F.opex,1],["EBITDA",F.ebitda,2],["D&A",[F.da,F.da,F.da],0],["EBIT",F.ebit,1],["Tax",F.tax,0],["NET INCOME",F.ni,2],["Opening cash",F.open,0],["Operating cash (NI+D&A)",F.cfops,0],["Closing cash",F.close,1],["Break-even revenue",F.be,0]];
   h+=`<div class="card"><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>€ (net of IVA)</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>`;
   rows.forEach(([lab,arr,w])=>{const st=w>=1?'font-weight:800':'';h+=`<tr class="${w===2?'subhdr':''}"><td style="${st}">${lab}</td>`+arr.map(v=>`<td style="${st}">${eur(v)}</td>`).join("")+`</tr>`;});
   h+=`</tbody></table></div></div>`;
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Key assumptions (edit — model recalculates live)</p><div style="display:flex;flex-wrap:wrap;gap:14px">`;
-  const A=[["atv","Store ATV net €"],["tx1","Store tx/day Y1"],["tx3","Store tx/day Y3"],["days","Open days/mo"],["b2b1","B2B €/yr — Year 1"],["promo1","Promo €/yr — Year 1"],["acc2","B2B accounts Y2"],["acc3","B2B accounts Y3"],["racc","B2B €/account"],["con2","Promo contracts Y2"],["con3","Promo contracts Y3"],["rcon","Promo €/contract"],["ord3","Online orders/mo Y3"],["aov","Online AOV €"],["mR","Retail margin"],["mB","B2B margin"],["mP","Promo margin"],["rent","Rent €/mo"],["mkt","Marketing %"],["equity","Partner equity €"]];
+  const A=[["atv","Store ATV net €"],["tx1","Store tx/day Y1"],["tx3","Store tx/day Y3"],["days","Open days/mo"],["b2b1","B2B €/yr — Year 1"],["promo1","Promo €/yr — Year 1"],["acc2","B2B accounts Y2"],["acc3","B2B accounts Y3"],["racc","B2B €/account"],["con2","Promo contracts Y2"],["con3","Promo contracts Y3"],["rcon","Promo €/contract"],["ord3","Online orders/mo Y3"],["aov","Online AOV €"],["mR","Retail margin"],["mB","B2B margin"],["mP","Promo margin"],["rent","Rent €/mo"],["mkt","Marketing %"],["mgr1","Founder salary Y1 €"],["mgr","Founder salary Y2+ €"],["autoMo","Autónomo €/mo each"],["autoN","Founders on autónomo"],["equity","Partner equity €"]];
   A.forEach(([k,l])=>h+=`<div class="setrow"><label>${l}</label><input class="num" type="number" step="any" value="${fin[k]}" onchange="updFin('${k}',this.value)"></div>`);
   h+=`</div><p class="muted" style="font-size:12px;margin-top:8px">Year-1 B2B/Promo revenue = <b>max(Won deals, planned floor)</b>. Won so far: B2B <b>${eur(b2bWonValue())}</b>, Promo <b>${eur(promoWonValue())}</b> (planned floor set by the "€/yr — Year 1" inputs). Aligned with the standalone Excel model.</p></div>`;
   // Launch-year monthly ramp
