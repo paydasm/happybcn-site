@@ -242,6 +242,11 @@
     table.grid2 td:first-child,table.grid2 th:first-child{position:sticky;left:0;background:#fff;box-shadow:2px 0 4px rgba(29,34,51,.04)}
     table.grid2 thead th:first-child{background:#1D2233}
     table.grid2 tr.subhdr td:first-child{background:#F4F2FC}
+    /* all Location-tab tables: compact cells + inputs so wide grids stay navigable on mobile */
+    .locview table.grid2 th,.locview table.grid2 td{padding:8px 6px;font-size:12.5px}
+    .locview table.grid2 input.num{min-width:0;width:50px;font-size:13.5px;padding:7px 5px;text-align:center}
+    .locview table.grid2 input.txt{min-width:96px;font-size:13.5px;padding:8px 7px}
+    .locview table.grid2 select.sel{min-width:0;width:auto;font-size:12.5px;padding:7px 5px}
     /* dense street-ranking table: compact cells + inputs so 20 columns stay navigable */
     table.grid2.rank{font-size:12px}
     table.grid2.rank th,table.grid2.rank td{padding:7px 5px}
@@ -1834,7 +1839,7 @@ function benchmarkCard(){
   return h;
 }
 function viewLocation(){
-  let h=`<h2 class="view">Store location</h2><p class="viewsub">Start from the <b>target neighbourhoods</b> — search where brand and budget align — then paste real listings, screen them against the traspaso trap, and score the survivors. ✅ OK listings flow into the scorecard.</p>`;
+  let h=`<div class="locview"><h2 class="view">Store location</h2><p class="viewsub">Start from the <b>target neighbourhoods</b> — search where brand and budget align — then paste real listings, screen them against the traspaso trap, and score the survivors. ✅ OK listings flow into the scorecard.</p>`;
   // ---- Target neighbourhoods ----
   const ranked=locAreas.map(a=>({a,f:areaFit(a)})).sort((x,y)=>(y.f==null?-1:y.f)-(x.f==null?-1:x.f));
   h+=`<div class="card"><p class="sectiontitle">Target neighbourhoods — where to focus the search</p>`;
@@ -1894,7 +1899,7 @@ function viewLocation(){
     h+=`<tr class="subhdr"><td>Rank</td><td></td>`+fits.map(f=>`<td>${f!=null?(fits.filter(x=>x!=null&&x>f).length+1):'—'}</td>`).join("")+`</tr>`;
     h+=`</tbody></table></div>`;
   }
-  return h+`</div>`;
+  return h+`</div></div>`;
 }
 
 /* ---- PIPELINES (B2B / Promo) ---- */
