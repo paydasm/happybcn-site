@@ -512,17 +512,8 @@ const REF = {
      <tr><td>Employer social security</td><td>~31% of gross</td></tr>
    </table>
    <div class="note">Turkey–EU customs union means most industrial goods (accessories) import duty-free — a real margin advantage. SMI (min wage) 2026 ≈ €1,184/mo ×14 payments.</div>`},
- s5:{title:"Indicative startup budget (illustrative)",html:`
-   <table>
-     <tr><td>Store fit-out & fixtures (≈60 m²)</td><td>€45,000</td></tr>
-     <tr><td>Opening inventory (all channels)</td><td>€40,000</td></tr>
-     <tr><td>E-commerce build & localization</td><td>€8,000</td></tr>
-     <tr><td>Company, legal, trademark, licenses</td><td>€8,000</td></tr>
-     <tr><td>Launch marketing (pre-opening)</td><td>€10,000</td></tr>
-     <tr><td>Deposit + working capital + contingency</td><td>€39,000</td></tr>
-     <tr><td><b>Indicative total to launch</b></td><td><b>≈ €150,000</b></td></tr>
-   </table>
-   <div class="note">Rent guide: prime high street up to €235/m²/mo; a viable neighbourhood location (Gràcia, El Born, an Eixample side street) ≈ €30–45/m²/mo. Numbers are planning placeholders — replace in the financial model.</div>`}
+ s5:{title:"Startup budget — modelled live in Finance",html:`
+   <div class="note">The startup investment is modelled live in <b>Finance → startup costs</b> (fit-out, opening inventory, e-commerce, legal, launch marketing, deposit, working capital &amp; contingency) and flows straight into the cash plan — that is the single source of truth, so this stage keeps no separate placeholder budget of its own.<br><br>Rent guide (market reference, not a model output): prime high street up to €235/m²/mo; a viable neighbourhood location (Gràcia, El Born, an Eixample side street) ≈ €30–45/m²/mo.</div>`}
 };
 
 /* ============================ STATE ============================ */
@@ -686,7 +677,7 @@ let vision={
  ],
  risks:[
   {r:"Location & rent — the right unit at the right price is scarce",m:"Work the search pipeline + playbook; never overpay or take a traspaso; hold for the late-March fallback rather than settle."},
-  {r:"Slow ramp — the store builds slower than ~18 sales/day",m:"Protect cash, lean on B2B/promo and the gifting seasons, tighten the range to hero SKUs."},
+  {r:"Slow ramp — the store builds slower than the modelled sales/day",m:"Protect cash, lean on B2B/promo and the gifting seasons, tighten the range to hero SKUs."},
   {r:"Cash trough — a thin low point in Year 2 (watch the live cash line)",m:"Milestone-gated spend, keep a reserve, delay hires until the load is proven."},
   {r:"Supplier / HQ dependence — single-source on core product",m:"Safety stock on hero SKUs, local personalization & packaging partners, terms in writing."},
   {r:"Seasonality — August empties, Q4 concentrated",m:"Plan stock and cash around it; use B2B/promo to smooth the single-store swings."},
@@ -696,8 +687,8 @@ let vision={
  ],
  killCriteria:[
   "If no acceptable unit is signed by the go/no-go date, run a pop-up or market season first to test demand cheaply before committing to a lease.",
-  "If, 3 months after opening, the store run-rate is under ~€10k/month with no upward trend, cut to the core range, renegotiate rent, and pause any second-location thinking.",
-  "If cash is projected to fall below ~€8k, freeze discretionary spend and hiring immediately and rebuild the plan on fresh numbers.",
+  "If, 3 months after opening, the store run-rate is running well below the model with no upward trend, cut to the core range, renegotiate rent, and pause any second-location thinking.",
+  "If cash is projected to fall below a safe reserve (toward the planned trough), freeze discretionary spend and hiring immediately and rebuild the plan on fresh numbers.",
   "Open a second location only once the first clears break-even and holds it for 3+ months with a healthy reserve (per the Growth milestones)."
  ],
  horizon:[
@@ -954,31 +945,31 @@ let segModels={
   {line:"Gift set (bundle)",cogs:11.00,rrp:39,note:"Gifting"},
   {line:"Trencadís capsule strap",cogs:5.00,rrp:24,note:"Collectible"}
  ],
- ladderNote:"Per-line gross margins run ~66–77%. The Finance model uses a conservative blended ~62% net retail margin after personalization consumables, packaging, markdowns (rebaixes) and shrink — plus the free-personalization-with-purchase launch offer. Wholesale keystone ≈ 50% of RRP (~45% our margin); promo = volume-tiered per unit + one-off setup fee (~40% margin).",
+ ladderNote:"Per-line gross margins come from each line's net price vs COGS in the table above. The Finance model applies a conservative blended net retail margin (after personalization consumables, packaging, markdowns/rebaixes and shrink, plus the free-personalization-with-purchase launch offer). Wholesale is keystone (≈50% of RRP); promo is volume-tiered per unit + a one-off setup fee. The blended margins the plan actually uses (retail / B2B / promo) live in the Finance tab.",
  retail:{
   offer:"A colourful flagship boutique (~40–100 m², Gràcia / El Born) with the 'Hazlo tuyo' personalization bar front-and-centre. A Christmas pop-up bridges if fit-out isn't ready for the window.",
-  econ:"ATV €28 net · ~62% blended gross margin · Year 1 ≈ €157k = ~18 sales/day × €28 × ~26 trading days × 12 mo. Basket build: 1 hero item (€18–22 net) + a charm / personalization add-on lifts ATV toward €28.",
+  econ:"Net ATV × sales/day × ~26 trading days × 12 months — the live values and the resulting store revenue are in the Finance tab. Basket build: one hero item + a charm / personalization add-on lifts ATV. Margin is the blended net retail margin from Finance.",
   terms:"Impulse / gift price points; free basic personalization drives footfall, small add-on charges for charms/initials/gift-wrap.",
-  target:"Year 1 €157k (launch-year ramp). Grow via ATV (add-ons + personalization), footfall→conversion, and repeat.",
+  target:"The Year-1 store target is the launch-year ramp in Finance. Grow it via ATV (add-ons + personalization), footfall→conversion, and repeat.",
   who:"Walk-in locals + gift-buyers + visitors; discovery via social and footfall in the target streets."
  },
  b2b:{
   offer:"Curated wholesale range (straps, charms, cords) + a branded counter display + seasonal capsule pre-orders.",
-  econ:"Wholesale ≈ 50% of RRP (~45% our margin); +5% over €2,000. Avg first-year account ≈ €2,000–3,500 — reorders are the real value. To €25k Y1 ≈ 8–12 active accounts; target 12–15 building through the pipeline.",
+  econ:"Wholesale is keystone (≈50% of RRP; our margin per Finance). Avg first-year account ≈ €2,000–3,500 — reorders are the real value. The €25k Year-1 B2B target (a Finance input) ≈ 8–12 active accounts, building to 12–15 through the pipeline.",
   terms:"€300 opening / €200 reorder / 6 units per style; proforma or 50% deposit, net-30 once established; 1–2 wk from stock; faulty-only returns.",
-  target:"Year 1 €25k across 12–15 active accounts; then drive reorders + a key-account program (museum shops, hotels).",
+  target:"Year-1 B2B target €25k (a Finance input) across 12–15 active accounts; then drive reorders + a key-account program (museum shops, hotels).",
   who:"Start: Nuovum · Ivori · Local Design Market · Bon Vent · Blended · Design Place. Slower / higher-value: MiróShop · Museu Picasso · Disseny Hub."
  },
  promo:{
   offer:"Customizable gifts — brand colours, logo on tag/charm/packaging, co-branded colourways, custom gift boxes. Use cases: welcome kits, corporate & client gifts, event merch, campaigns, hotel amenities.",
-  econ:"Volume-tiered per unit + one-off setup fee; ~40% margin; avg contract ≈ €4,000. To €20k Y1 ≈ 5 contracts; recurring contracts are worth far more than one-offs.",
+  econ:"Volume-tiered per unit + a one-off setup fee; margin per Finance. Avg contract ≈ €4,000. The €20k Year-1 promo target (a Finance input) ≈ 5 contracts; recurring contracts are worth far more than one-offs.",
   terms:"From ~100 units/project; ~4–8 wk lead time; paid samples credited on order.",
-  target:"Year 1 €20k across ~5–6 contracts; land 3–5 recurring corporate accounts.",
+  target:"Year-1 promo target €20k (a Finance input) across ~5–6 contracts; land 3–5 recurring corporate accounts.",
   who:"Colour-led: Desigual · W Barcelona · Colvin · Primavera Sound · Estrella Damm. Welcome-kit volume: Factorial · IESE · ESADE."
  },
  retailMix:{
   transactions:5616,
-  note:"Bottom-up build of the retail plan by product group: units × net price → revenue & gross profit, rolled up. Reconciles to Finance — total ≈ €157k, implied ATV ≈ €28 (revenue ÷ transactions), ~72% gross before the ~62% net (after personalization consumables, markdowns, shrink; see the price-architecture reconciliation). Transactions ≈ 18 sales/day × 26 days × 12 mo. Edit the units to re-plan the mix.",
+  note:"Bottom-up build of the retail plan by product group: units × net price → revenue & gross profit, rolled up, reconciling to the store revenue in Finance. The blended net margin is applied in Finance. Edit the units to re-plan the mix.",
   groups:[
    {group:"Phone straps (hero)",units:3300,net:19.00,cogs:4.60},
    {group:"Bag charms",units:1900,net:12.40,cogs:3.80},
@@ -990,7 +981,7 @@ let segModels={
   ]
  },
  b2bMix:{
-  note:"Product-group split of the ~€25k B2B plan — but the real driver is account count (~8–12 active accounts, building to 12–15). Wholesale net ≈ 50% of retail net; blended ~45% our margin (per Finance). 'Units' are annual wholesale units across all accounts.",
+  note:"Product-group split of the €25k B2B plan (a Finance input) — the real driver is account count (~8–12 active accounts, building to 12–15). Wholesale net ≈ 50% of retail net; blended margin per Finance. 'Units' are annual wholesale units across all accounts.",
   groups:[
    {group:"Phone straps",units:1400,net:9.09,cogs:4.60},
    {group:"Bag charms",units:900,net:6.20,cogs:3.80},
@@ -1000,7 +991,7 @@ let segModels={
   ]
  },
  promoMix:{
-  note:"Product-group split of the ~€20k promo plan — but the real driver is contract count (~5 contracts × ~€4k, plus one-off setup fees). ~40% margin. 'Units' are customized pieces across projects; welcome kits are bundles.",
+  note:"Product-group split of the €20k promo plan (a Finance input) — the real driver is contract count (~5 contracts × ~€4k, plus one-off setup fees); margin per Finance. 'Units' are customized pieces across projects; welcome kits are bundles.",
   groups:[
    {group:"Custom phone straps",units:800,net:12.00,cogs:7.00},
    {group:"Custom charms / keyrings",units:500,net:9.00,cogs:5.40},
@@ -1010,7 +1001,7 @@ let segModels={
  },
  synergy:"One brand, one supply chain, three compounding channels. The store is the shop window and the lead engine — walk-in buyers, boutique owners and corporate visitors become B2B and promo leads (the Launch KPI already tracks 'B2B / gifting leads from store'). The personalization system is one engine across all three: retail make-your-own, co-branded pieces for B2B stockists, and custom colours/logo for promo. Shared inventory + HQ supply mean one buy serves every channel, and B2B/promo are capital-light revenue that helps fund the store and the next location. The sequence: retail proves the brand → the brand wins B2B accounts & promo contracts → those fund expansion."
 };
-const PROMO_CAT_SEED={note:"Quotable promo catalogue — customization menu, MOQs, volume tiers & lead times. ~40% margin; a one-off setup fee per project (screens / tooling), samples credited on order. Confirm per-unit tier prices against the HQ transfer cost before quoting.",items:[
+const PROMO_CAT_SEED={note:"Quotable promo catalogue — customization menu, MOQs, volume tiers & lead times. Margin per Finance; a one-off setup fee per project (screens / tooling), samples credited on order. Confirm per-unit tier prices against the HQ transfer cost before quoting.",items:[
  {product:"Custom phone straps",custom:"Brand colours + logo on tag / charm",moq:"100",tiers:"100–299 · 300–999 · 1000+",lead:"4–6 wk"},
  {product:"Custom charms / keyrings",custom:"Shape + colour + logo",moq:"100",tiers:"100–499 · 500+",lead:"4–6 wk"},
  {product:"Welcome / onboarding kits",custom:"Co-branded gift box + mix of pieces",moq:"50",tiers:"50–199 · 200+",lead:"5–8 wk"},
@@ -1046,11 +1037,11 @@ function segUnitEconCard(){const rm=segModels.retailMix;let ru=0,rr=0,rg=0;(rm.g
  h+=box(segColor("B2B"),"B2B — the account",[["Avg account / yr",eur(fin.racc)],["Opening / reorder","€300 / €200 · 6 units/style"],["Blended margin","~45%"],["The lever","reorders (LTV ≫ first order)"]]);
  h+=box(segColor("Promotional"),"Promo — the contract",[["Avg contract",eur(fin.rcon)],["Structure","setup fee + volume tiers"],["Margin","~40%"],["The lever","recurring accounts (3–5)"]]);
  h+=`</div><p class="muted" style="font-size:12px;margin-top:10px">Retail is computed live from the retail mix ÷ transactions; B2B/Promo from the Finance drivers — edit those to update these.</p></div>`;return h;}
-function segScenarioCard(){const F=computeFinance();const lo=0.75,hi=1.25;const ch=[["Retail — sales/day",F.retail[0]],["B2B — accounts",F.b2b[0]],["Promotional — contracts",F.promo[0]]];let tl=0,tb=0,th=0;
+function segScenarioCard(){const F=computeFinance();const cashLow=computeMonthly().trough.cash;const lo=0.75,hi=1.25;const ch=[["Retail — sales/day",F.retail[0]],["B2B — accounts",F.b2b[0]],["Promotional — contracts",F.promo[0]]];let tl=0,tb=0,th=0;
  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Scenario &amp; sensitivity — Year 1 (key driver ±25%)</p><p class="viewsub" style="margin:-6px 0 10px">Each channel's Year-1 revenue is linear in its key driver, so ±25% on that driver moves revenue ±25%. Shows the cushion and the upside in the plan.</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Channel (driver)</th><th>Conservative −25%</th><th>Base</th><th>Stretch +25%</th></tr></thead><tbody>`;
  ch.forEach(function(r){var lab=r[0],b=r[1];tl+=b*lo;tb+=b;th+=b*hi;h+=`<tr><td>${lab}</td><td style="color:var(--st-blocked)">${eur(b*lo)}</td><td><b>${eur(b)}</b></td><td style="color:var(--st-done)">${eur(b*hi)}</td></tr>`;});
  h+=`<tr class="subhdr"><td>Total Year-1 revenue</td><td>${eur(tl)}</td><td>${eur(tb)}</td><td>${eur(th)}</td></tr>`;
- h+=`</tbody></table></div><p class="muted" style="font-size:12px;margin-top:8px">The conservative case is the one to pressure-test against the ~€3k Year-1 cash low. Adjust drivers in the Finance tab to model a specific case.</p></div>`;return h;}
+ h+=`</tbody></table></div><p class="muted" style="font-size:12px;margin-top:8px">The conservative case is the one to pressure-test against the ${eur(cashLow)} Year-1 cash low (live from the Finance tab). Adjust drivers in the Finance tab to model a specific case.</p></div>`;return h;}
 function promoCatalogueCard(){const cat=(segModels.promoCatalogue&&Array.isArray(segModels.promoCatalogue.items))?segModels.promoCatalogue:PROMO_CAT_SEED;const col=segColor("Promotional");
  let h=`<div class="card" style="margin-top:16px;border-top:4px solid ${col}"><p class="sectiontitle" style="color:${col}">Promo catalogue — customization menu, MOQs &amp; tiers</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Product</th><th>Customization</th><th>MOQ</th><th>Volume tiers</th><th>Lead</th><th></th></tr></thead><tbody>`;
  cat.items.forEach(function(it,i){h+=`<tr><td><input class="txt" style="min-width:150px" value="${escAttr(it.product)}" onchange="updPromoCatItem(${i},'product',this.value)"></td>`+
@@ -2632,7 +2623,7 @@ let launch={
  kpis:[
   {id:"k1",metric:"Weekly footfall (entrants)",target:"Ramp to 600–900 / wk by wk 12",actual:""},
   {id:"k2",metric:"Conversion rate",target:"15–22%",actual:""},
-  {id:"k3",metric:"Average transaction value",target:"€18–26",actual:""},
+  {id:"k3",metric:"Average transaction value",target:"Hit or beat the Finance net ATV",actual:""},
   {id:"k4",metric:"Monthly revenue vs plan",target:"Hit or beat the Finance line",actual:""},
   {id:"k5",metric:"Instagram followers (local)",target:"3,000–5,000 engaged",actual:""},
   {id:"k6",metric:"Email / WhatsApp opt-ins",target:"1,000+",actual:""},
@@ -2906,7 +2897,7 @@ let growth={
   {id:"m5",trigger:"3 recurring Promo contracts",action:"Assign a Promo Lead; build a gifting catalogue",owner:"",status:"Watching"},
   {id:"m6",trigger:"Online ≥ €2k/mo (ship-from-store)",action:"Invest in proper e-commerce + fulfilment",owner:"",status:"Watching"},
   {id:"m7",trigger:"Instagram ≥ 10k engaged local",action:"Scale paid + an always-on creator program",owner:"",status:"Watching"},
-  {id:"m8",trigger:"Year-2 revenue on/ahead of plan (~€350k)",action:"Second-city feasibility study",owner:"",status:"Watching"}
+  {id:"m8",trigger:"Year-2 revenue on/ahead of plan (see Finance)",action:"Second-city feasibility study",owner:"",status:"Watching"}
  ]
 };
 function normalizeGrowth(g){g=g||{};if(!Array.isArray(g.initiatives))g.initiatives=[];if(!Array.isArray(g.milestones))g.milestones=[];return g;}
