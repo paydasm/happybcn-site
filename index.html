@@ -589,7 +589,7 @@ function _mkSheet(aoa,cols,fmts,colorRules){
 function _save(wb,base){var d=new Date().toISOString().slice(0,10);XLSX.writeFile(wb,'HappyBCN-'+base+'-'+d+'.xlsx');}
 function dlBar(v){
   var lbl={finance:'Download Excel model',roadmap:'Download checklist (Excel)',b2b:'Download B2B pipeline (Excel)',promo:'Download Promo pipeline (Excel)',launch:'Download KPIs (Excel)'}[v]||'Download Excel';
-  return '<div style="margin:-8px 0 14px"><button class="btn solid" style="font-size:12.5px;padding:6px 12px" onclick="exportSection(\''+v+'\')">⬇ '+lbl+'</button> <span class="muted" style="font-size:11.5px">current data, live from this workspace</span></div>';
+  return '<div style="margin:-8px 0 14px"><button class="btn solid" style="font-size:12.5px;padding:6px 12px" onclick="exportSection(\''+v+'\')">⬇ '+lbl+'</button><div class="muted" style="font-size:11.5px;margin-top:5px">current data, live from this workspace</div></div>';
 }
 function exportSection(kind){
   ensureXLSX().then(function(){try{_buildExport(kind);}catch(e){alert('Export failed: '+e.message);}})
