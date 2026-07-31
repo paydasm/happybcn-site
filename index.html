@@ -669,25 +669,25 @@ let vision={
   {h:"Built to last, funded by us",t:"Self-funded, sustainable growth; profit over speed."}
  ],
  goals:[
-  {h:"Year 1 — Land it (funded investment year)",t:"Open the flagship store, establish the brand, sign first wholesale & promo accounts; hit the ~€202k plan. A planned operating loss (~−€42k), fully funded by the €200k capital; end Year 1 with ~€17k cash and momentum."},
-  {h:"Year 2 — Deepen it (reach break-even)",t:"A strong store, a repeat B2B base and recurring corporate clients lift revenue to ~€352k and bring the business to roughly monthly break-even. The cash low point (~€12k) — protect it. A second BCN presence only if cash flow allows."},
-  {h:"Year 3 — Prove it repeats (first profit)",t:"Revenue ~€497k and the first full-year net profit (~€12k), cash recovering to ~€33k. A self-funded second location becomes a real decision, backed by a repeatable blueprint."}
+  {h:"Year 1 — Land it (funded investment year)",t:"Open the flagship store, establish the brand in the neighbourhood, and sign the first wholesale & promo accounts. This is the funded investment year: partner capital covers startup and the ramp, so the job is to prove the store and build momentum. The live revenue, result and cash for each year are in the financial-trajectory block below."},
+  {h:"Year 2 — Deepen it (reach break-even)",t:"A stronger store, a repeat B2B base and recurring corporate clients lift revenue and bring the business to roughly monthly break-even. Watch the Year-2 cash low point — protect it. A second BCN presence only if cash flow clearly allows."},
+  {h:"Year 3 — Prove it repeats (first profit)",t:"The plan reaches its first full-year net profit and cash begins to rebuild. A self-funded second location becomes a real, evidence-backed decision, on a repeatable blueprint."}
  ],
  timingTarget:"Open into the Christmas 2026 gifting season — Aug–Sep 2026 sign the unit, form the SL, place the first order; Oct fit-out + a quiet soft open; late-Oct / early-Nov grand opening into the peak gifting run (Black Friday → Christmas → Reyes, 6 Jan); 23 Apr 2027 Sant Jordi as the second beat + the Trencadís capsule.",
  timingFallback:"If the unit or fit-out slips past mid-November, don't open cold into the post-Reyes January lull — hold for a late-March 2027 opening, straight into the run-up to Sant Jordi. (The clock only really starts once a unit is signed — none is yet.)",
- kpis:"Store: sales/day, net ATV (€28), footfall→purchase conversion, sales per m², weekly sell-through, personalization on 25%+ of transactions. B2B: active accounts, first-order value, reorder rate, pipeline. Promo: contracts, avg value, quote→win, lead time. Health: monthly revenue vs the model, blended gross margin (~54–58%), operating cash & runway (watch the Year-2 trough), Instagram followers / engagement.",
+ kpis:"Store: sales/day, net ATV, footfall→purchase conversion, sales per m², weekly sell-through, personalization on a healthy share of transactions. B2B: active accounts, first-order value, reorder rate, pipeline coverage. Promo: contracts, avg value, quote→win, lead time. Health: monthly revenue vs the model, blended gross margin, operating cash & runway (watch the Year-2 trough), Instagram followers / engagement. (Target values for ATV, margin and sales/day live in the Finance tab.)",
  assumptions:[
-  "The chosen neighbourhood delivers the right footfall — enough of the right people pass to reach ~18 sales/day at €28 ATV in Year 1.",
+  "The chosen neighbourhood delivers the right footfall — enough of the right people pass to hit the Year-1 sales/day and ATV targets in the model.",
   "In-store personalization lands as the real differentiator — it drives conversion, repeat and word-of-mouth, not just novelty.",
   "HQ supply holds: agreed wholesale pricing, MOQs and ~3–4 week lead times, imported duty-free under the A.TR customs union.",
-  "The B2B and Promo pipelines convert at roughly the modelled pace (~€25k / €20k in Year 1, scaling after).",
-  "€200k of partner capital is enough to fund startup (~€150k) and the Year 1–2 losses with no outside money.",
-  "Gross margin holds at ~54–58% after real COGS, IVA and shrink."
+  "The B2B and Promo pipelines convert at roughly the modelled pace (Year-1 targets in Finance), scaling after.",
+  "The partner capital is enough to fund startup and the ramp with no outside money.",
+  "Gross margin holds at the modelled blend after real COGS, IVA and shrink."
  ],
  risks:[
   {r:"Location & rent — the right unit at the right price is scarce",m:"Work the search pipeline + playbook; never overpay or take a traspaso; hold for the late-March fallback rather than settle."},
   {r:"Slow ramp — the store builds slower than ~18 sales/day",m:"Protect cash, lean on B2B/promo and the gifting seasons, tighten the range to hero SKUs."},
-  {r:"Cash trough — a thin ~€12k low point in Year 2",m:"Milestone-gated spend, keep a reserve, delay hires until the load is proven."},
+  {r:"Cash trough — a thin low point in Year 2 (watch the live cash line)",m:"Milestone-gated spend, keep a reserve, delay hires until the load is proven."},
   {r:"Supplier / HQ dependence — single-source on core product",m:"Safety stock on hero SKUs, local personalization & packaging partners, terms in writing."},
   {r:"Seasonality — August empties, Q4 concentrated",m:"Plan stock and cash around it; use B2B/promo to smooth the single-store swings."},
   {r:"Competition / copying — a chain adds colour + personalization",m:"Speed to being loved & local; community and identity as the moat, not the mechanic."},
@@ -740,7 +740,7 @@ function viewVision(){
  h+=`<button class="addbtn" style="font-size:12px;padding:5px 10px" onclick="addVisionItem('goals')">+ add goal</button></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Financial trajectory &amp; funding — live from the Finance tab</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>€ (net)</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>`+
   [["Revenue — store",F.store,0],["Revenue — B2B",F.b2b,0],["Revenue — promo",F.promo,0],["Total revenue",F.rev,1],["Gross profit",F.gp,0],["Operating costs",F.opex,0],["Net income",F.ni,1],["Closing cash",F.close,0]].map(x=>`<tr${x[2]?' class="subhdr"':''}><td>${x[0]}</td>`+x[1].map(v=>`<td>${eur(v)}</td>`).join("")+`</tr>`).join("")+
-  `</tbody></table></div><p class="muted" style="font-size:12.5px;line-height:1.6;margin-top:8px">Funded by ${eur(fin.equity)} partner capital — no outside investors. ~${eur(F.startupTotal)} is the one-off startup investment (buffer ~${eur(fin.equity-F.startupTotal)}). A planned loss while the store ramps: roughly monthly break-even in Year 2, first full-year profit in <b>${firstProfit}</b>. Break-even run-rate ~${eur(F.be[0])}/yr at Year-1 costs. Cash never goes negative — low point ${eur(lowCash)}. (Supersedes the earlier €245k capital / €214k Year-1 / "positive cash in Year 1" figures.)</p></div>`;
+  `</tbody></table></div><p class="muted" style="font-size:12.5px;line-height:1.6;margin-top:8px">Funded by ${eur(fin.equity)} of partner capital — no outside investors. About ${eur(F.startupTotal)} is the one-off startup investment${(fin.apFinanced>0)?`, of which ${eur(fin.apFinanced)} of opening stock is on an HQ launch payment term — paid from early sales, not funded upfront`:''}. Roughly monthly break-even in Year 2, first full-year profit in <b>${firstProfit}</b>; break-even run-rate ~${eur(F.be[0])}/yr at Year-1 costs. Cash never goes negative — lowest point on plan ${eur(lowCash)}. <b>Every figure here is computed live from the Finance tab</b>, so the narrative elsewhere on this page deliberately carries no fixed numbers and can't drift.</p></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Launch timing</p><label class="bb">Target — open into the Christmas 2026 gifting season</label>`+taField(vision.timingTarget,"updVision('timingTarget',this.value)")+`<div style="margin-top:10px"><label class="bb">Fallback</label>`+taField(vision.timingFallback,"updVision('timingFallback',this.value)")+`</div></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Year-1 KPIs</p>`+taField(vision.kpis,"updVision('kpis',this.value)")+`</div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Key assumptions — what must be true</p>`;
