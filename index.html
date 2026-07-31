@@ -1508,7 +1508,7 @@ function selOpts(opts,val,handler){return `<select class="sel" onchange="${handl
 let _lid=100,_pid=100,_aid=100;
 
 /* ---- LOCATION ---- */
-let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5,femalePct:55,buyFemale:1.35,buyMale:0.55,defM2:60,convPrudence:1};
+let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:35,stopRate:15,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5,femalePct:55,buyFemale:1.35,buyMale:0.55,defM2:60,convPrudence:1,bandFoot:25,bandCap:30,bandConv:15};
 /* ---- Multi-stage footfall→sales funnel ----
    TWO layers. (1) Street type shapes the FOOTFALL→ENTRY funnel: notice → stop → enter,
    which multiply to the effective walk-in capture. Neutral ('') reproduces the legacy
@@ -1573,6 +1573,35 @@ function frontFactor(l){
   const base=locSettings.baseFrontM??5, el=locSettings.frontElast??0.5;
   const f=Math.pow(fm/base, el);
   return Math.max(0.6,Math.min(1.6,f));   // clamp so an outlier width can't dominate
+}
+/* ---- Confidence band: independent uncertainty on the three least-known layers, combined in
+   quadrature (NOT simultaneous worst case). Footfall (proxy vs real count), capture (least-
+   benchmarked layer for a new brand) and conversion (browse×close within known ranges) each
+   carry a ±% swing; the blended swing widens the sales/€ range so no single figure reads as a
+   promise. Applied to store sales only — other channels held flat. */
+function convBand(){
+  const bf=(locSettings.bandFoot!=null&&locSettings.bandFoot!=='')?Number(locSettings.bandFoot)/100:0.25;
+  const bc=(locSettings.bandCap!=null&&locSettings.bandCap!=='')?Number(locSettings.bandCap)/100:0.30;
+  const bv=(locSettings.bandConv!=null&&locSettings.bandConv!=='')?Number(locSettings.bandConv)/100:0.15;
+  const swing=Math.min(0.70,Math.sqrt(bf*bf+bc*bc+bv*bv));   // cap at ±70% so it stays interpretable
+  return {bf,bc,bv,swing,lo:Math.max(0,1-swing),hi:1+swing};
+}
+/* ---- On-street observation: a timed pedestrian count outside a specific unit (populate on the
+   ground in September). When 'passers' + 'entered' are recorded, the observed capture (enter/pass)
+   REPLACES the street-type estimate for that unit; 'bought' calibrates conversion too. Optional
+   glance/stop counts decompose the early steps for display. This is the highest-accuracy input —
+   it swaps assumptions for counts. */
+function obsCapture(o){
+  if(!o)return null;
+  const gv=k=>(o[k]!==''&&o[k]!=null&&!isNaN(Number(o[k])))?Number(o[k]):null;
+  const pass=gv('obsPass'); if(!pass||pass<=0)return null;
+  const gl=gv('obsGlance'), st=gv('obsStop'), en=gv('obsEnter'), bu=gv('obsBuyers');
+  if(en==null)return null;                                   // need at least an enter count to calibrate capture
+  const cap=Math.max(0,Math.min(1,en/pass));                 // observed walk-in capture
+  const w=(gl!=null)?Math.max(0,Math.min(1,gl/pass)):null;   // observed notice rate (for display)
+  const s=(gl!=null&&st!=null&&gl>0)?Math.max(0,Math.min(1,st/gl)):null; // observed stop|notice
+  const buy=(bu!=null&&en>0)?Math.max(0,Math.min(1,bu/en)):null;         // observed buyers/entrant (overrides conversion)
+  return {cap,w,s,buy,pass,glance:gl,stop:st,enter:en,buyers:bu,min:gv('obsMin'),date:o.obsDate||''};
 }
 /* Target neighbourhoods — where to focus the search (indicative secondary-street rent bands, €/m²·mo). */
 let locAreas=[
@@ -1770,17 +1799,22 @@ function locKPI(l){
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
   // Consumer-behaviour funnel: pass → notice (attention) → stop/look (interest) → enter (decision) → browse (engagement) → buy (purchase)
   const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront
-  const notice=perDay*F.w*ff, stop=notice*F.s, entr=stop*F.e; // capture = notice × stop × enter (notice lifted by frontage)
+  const ob=obsCapture(l);                                     // on-street timed count (Sept field data) → observed rates
+  const capEff=(ob&&ob.cap!=null)?ob.cap:F.cap*ff;            // observed capture overrides the modeled estimate for this unit
+  const notice=(ob&&ob.w!=null)?perDay*ob.w:perDay*F.w*ff;    // capture = notice × stop × enter (notice lifted by frontage)
+  const stop=(ob&&ob.s!=null)?notice*ob.s:notice*F.s;
+  const entr=perDay*capEff;
   const brR=browseRate();                                     // % of entrants who actively browse
   const clEff=closeRate()*am.buyMult*gm.buyMult;              // % of browsers who buy, audience- & gender-weighted
   const browse=entr*brR;
-  const tx=browse*clEff;                                      // sales/day
-  const buyEff=brR*clEff;                                     // overall entry → buy
+  const buyEff=(ob&&ob.buy!=null)?ob.buy:brR*clEff;           // observed buyers/entrant overrides modeled conversion
+  const tx=entr*buyEff;                                       // sales/day
   const atvEff=atv*am.atvMult;                                // spend, audience-weighted
   const eurMo=tx*atvEff*days;
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
-  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:F.cap,capEff:F.cap*ff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0};
+  const cb=convBand();                                        // low/base/high confidence band
+  return {blend10,perDay,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:capEff,capEff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0,calibrated:!!(ob&&ob.cap!=null),obs:ob,swing:cb.swing,txLo:tx*cb.lo,txHi:tx*cb.hi,eurMoLo:eurMo*cb.lo,eurMoHi:eurMo*cb.hi};
 }
 /* ---- Reference: footfall figures + their provenance, shown below the street tables ---- */
 function footfallRefCard(){
@@ -1850,8 +1884,35 @@ function footfallCard(){
   h+=`<div style="margin-top:10px;padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px"><p class="muted" style="font-size:11.5px;margin:0"><b>Reality-check on capture rate.</b> There is <b>no reliable global benchmark</b> — footfall-analytics vendors caution that any cross-industry capture figure is "directional at best" and advise comparing your own stores over time instead. The few published examples run higher than this model: ~<b>6–8%</b> in an Ariadne fashion-retail case, ~10% in a Vemco illustration — but those are established brands, often on prime streets, and definitions vary (some count only paused/relevant traffic). Our neutral ~<b>2%</b> is a deliberately <b>conservative</b> assumption for a new brand on a secondary street; the honest risk is it's low, not high. Only a real on-street count settles it. (Sources: Ariadne, Vemco capture-rate guides, 2026.)</p></div></div>`;
   return h;
 }
-function updLoc(id,k,v){const l=locListings.find(x=>x.id===id);l[k]=["area","link","notes","status","agent","contact","nextAct","nextDate","fwPeak","posType","posInfo","stype"].includes(k)?v:(v===""?"":Number(v));render();}
-function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:"",stype:"",touristPct:"",frontM:""});render();}
+/* ---- Confidence-band readout: low/base/high on the headline P&L, driven by the three swing dials ---- */
+function bandCard(){
+  const fb=financeBand(); if(!fb)return '';
+  const {b,base,lo,mid,hi}=fb;
+  const sw=(b.swing*100).toFixed(0);
+  const tLo=computeMonthly(_bandOvr(b.lo)).trough, tMid=computeMonthly().trough;
+  const dflt={bandFoot:25,bandCap:30,bandConv:15};
+  const D=[["bandFoot","Footfall ±% (proxy vs real count)"],["bandCap","Capture ±% (least-benchmarked)"],["bandConv","Conversion ±% (browse×close)"]];
+  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Confidence bands — low · base · high <span class="badge">honest uncertainty</span></p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 12px">Every headline number is a point estimate with hidden uncertainty — these bands make it explicit so no single figure reads as a promise. Each of the three least-known layers carries a ±% swing; combined <b>in quadrature</b> (independent uncertainties, <b>not</b> simultaneous worst case) that is a blended <b>±${sw}%</b> on store sales. The <b>profit</b> band is wider than the revenue band — fixed costs don't fall when sales do (operating leverage). Online, B2B and promo are held flat. Replace estimates with on-street counts (a unit's <b>Details → observation</b>) and the band narrows.</p>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px">`+D.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="1" value="${locSettings[k]??dflt[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`<div class="setrow"><label style="min-width:0"><b>Blended swing</b></label><input class="num" value="±${sw}%" disabled style="background:#F0EEF9;font-weight:700;width:72px"></div></div>`;
+  const R=[
+    {lab:"Store sales / day", lo:(base*b.lo).toFixed(1), base:base.toFixed(1), hi:(base*b.hi).toFixed(1), str:true},
+    {lab:"Total revenue — Year 1", lo:lo.rev[0], base:mid.rev[0], hi:hi.rev[0]},
+    {lab:"Net income — Year 1", lo:lo.ni[0], base:mid.ni[0], hi:hi.ni[0], em:1},
+    {lab:"Net income — Year 3", lo:lo.ni[2], base:mid.ni[2], hi:hi.ni[2]},
+    {lab:"Year-3 revenue", lo:lo.rev[2], base:mid.rev[2], hi:hi.rev[2]},
+    {lab:"Closing cash — Year 1", lo:lo.close[0], base:mid.close[0], hi:hi.close[0]},
+    {lab:"Cash low-point (worst month, Y1)", lo:tLo.cash, base:tMid.cash, hi:null, em:1}
+  ];
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Metric</th><th>Low (−${sw}%)</th><th>Base</th><th>High (+${sw}%)</th></tr></thead><tbody>`;
+  R.forEach(r=>{h+=`<tr><td style="${r.em?'font-weight:800':''}">${r.lab}</td>`+
+    [r.lo,r.base,r.hi].map(v=>{if(v===null)return `<td>—</td>`;const neg=(typeof v==='number'&&v<0);return `<td style="${r.em?'font-weight:800':''}${neg?';color:var(--st-blocked)':''}">${r.str?v:eur(v)}</td>`;}).join('')+`</tr>`;});
+  h+=`</tbody></table></div>`;
+  h+=`<p class="muted" style="font-size:11.5px;margin-top:10px">Method: store sales/day is scaled by the low/high multipliers (Year-2/3 growth ratios preserved) and the full P&L re-run at each, so the profit band captures operating leverage. The cash low-point is the deepest month of the launch-year ramp under each case — the honest stress test behind "cash never goes negative". The swing dials are editable; lower them as real counts replace the proxies.</p></div>`;
+  return h;
+}
+function updLoc(id,k,v){const l=locListings.find(x=>x.id===id);l[k]=["area","link","notes","status","agent","contact","nextAct","nextDate","fwPeak","posType","posInfo","stype","obsDate"].includes(k)?v:(v===""?"":Number(v));render();}
+function addLoc(){locListings.push({id:"L"+(_lid++),area:"",link:"",size:"",rent:"",traspaso:0,depMonths:2,other:"",fitout:"",notes:"",scores:null,status:"Spotted",agent:"",contact:"",nextAct:"",nextDate:"",check:{},fwWk:"",fwWe:"",fwHrs:"",fwPeak:"",posType:"",posInfo:"",posFactor:"",stype:"",touristPct:"",frontM:"",obsPass:"",obsGlance:"",obsStop:"",obsEnter:"",obsBuyers:"",obsMin:"",obsDate:""});render();}
 function rmLoc(id){locListings=locListings.filter(x=>x.id!==id);if(locOpen===id)locOpen=null;render();}
 function toggleLocOpen(id){locOpen=locOpen===id?null:id;render();}
 function updLocCheck(id,key,v){const l=locListings.find(x=>x.id===id);if(!l)return;if(!l.check)l.check={};l.check[key]=v;render();}
@@ -1873,10 +1934,16 @@ function locDrawer(l){
   d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Position factor scales footfall for the exact spot (corner / metro-adjacent ≈ 1.1–1.3; dead mid-block ≈ 0.7–0.9; default 1.0). <b>Tourist mix %</b> sets the audience split that drives buy-rate & spend — leave blank to use the street-type default (shown as the placeholder).</p>`;
   d+=`<div class="crmrow" style="margin-top:10px"><label>Footfall — weekday /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWk)}" onchange="updLoc('${l.id}','fwWk',this.value)"><label>Weekend /10min</label><input class="num" style="width:66px" type="number" value="${escAttr(l.fwWe)}" onchange="updLoc('${l.id}','fwWe',this.value)"><label>Busy hrs/day</label><input class="num" style="width:56px" type="number" value="${escAttr(l.fwHrs)}" onchange="updLoc('${l.id}','fwHrs',this.value)"><label>Frontage / window (m)</label><input class="num" style="width:60px" type="number" step="0.5" placeholder="${locSettings.baseFrontM??5}" value="${escAttr(l.frontM)}" onchange="updLoc('${l.id}','frontM',this.value)"><label>Peak times seen</label><input class="txt" value="${escAttr(l.fwPeak)}" onchange="updLoc('${l.id}','fwPeak',this.value)"></div>`;
   d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Frontage = the shopfront/window width in metres. A wider window catches more eyes, so it scales the <b>notice</b> and <b>look</b> steps (capture) vs a ${locSettings.baseFrontM??5} m baseline — leave blank to assume baseline. Measure it on the viewing.</p>`;
+  // ---- On-street observation: timed count, populated on the ground (Sept) — overrides modeled capture/conversion for this unit ----
+  const _ob=obsCapture(l);
+  d+=`<p class="sectiontitle" style="margin:16px 0 6px">On-street observation — timed count ${_ob?'<span class="flag ok">calibrated ✓</span>':'<span class="flag review">to gather Sept</span>'}</p>`;
+  d+=`<div class="crmrow"><label>Passers counted</label><input class="num" style="width:70px" type="number" value="${escAttr(l.obsPass)}" onchange="updLoc('${l.id}','obsPass',this.value)"><label>Glanced at window</label><input class="num" style="width:70px" type="number" value="${escAttr(l.obsGlance)}" onchange="updLoc('${l.id}','obsGlance',this.value)"><label>Stopped / looked</label><input class="num" style="width:70px" type="number" value="${escAttr(l.obsStop)}" onchange="updLoc('${l.id}','obsStop',this.value)"><label>Entered</label><input class="num" style="width:64px" type="number" value="${escAttr(l.obsEnter)}" onchange="updLoc('${l.id}','obsEnter',this.value)"><label>Bought</label><input class="num" style="width:60px" type="number" value="${escAttr(l.obsBuyers)}" onchange="updLoc('${l.id}','obsBuyers',this.value)"><label>Over (min)</label><input class="num" style="width:56px" type="number" value="${escAttr(l.obsMin)}" onchange="updLoc('${l.id}','obsMin',this.value)"><label>Date</label><input class="txt" type="date" value="${escAttr(l.obsDate)}" onchange="updLoc('${l.id}','obsDate',this.value)"></div>`;
+  if(_ob){d+=`<p class="muted" style="font-size:11.5px;margin:6px 0 0;padding:7px 10px;background:#ECFDF3;border:1px solid #A6F4C5;border-radius:8px"><b>Observed for this unit:</b> capture <b>${(_ob.cap*100).toFixed(1)}%</b> (${_ob.enter} entered of ${_ob.pass} passers${_ob.min?` in ${_ob.min} min`:''})${_ob.w!=null?` · notice ${(_ob.w*100).toFixed(0)}%`:''}${_ob.s!=null?` · stop|notice ${(_ob.s*100).toFixed(0)}%`:''}${_ob.buy!=null?` · buy ${(_ob.buy*100).toFixed(0)}% of entrants`:''}. These replace the street-type estimate below. ${_ob.buy==null?'Add <b>Bought</b> to calibrate conversion too.':''}</p>`;}
+  else{d+=`<p class="muted" style="font-size:11px;margin:2px 0 0">Stand outside for a timed window (10–15 min; repeat a weekday <b>and</b> a Saturday) and tally each stage. Once <b>Passers</b> and <b>Entered</b> are filled, the model uses this unit's <b>real observed capture</b> instead of the street-type estimate; add <b>Bought</b> to calibrate conversion. This is the single highest-value input — it swaps assumptions for counts.</p>`;}
   const kpi=locKPI(l);
   if(kpi){const rr=kpi.rentRatio;
     const verdict=rr==null?'':rr<=15?'<span style="color:var(--st-done);font-weight:700">healthy</span>':rr<=20?'<span style="color:var(--st-inprogress);font-weight:700">workable</span>':'<span style="color:var(--st-blocked);font-weight:700">stretch</span>';
-    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Behaviour funnel</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}, ${kpi.touristPct}% tourist${kpi.touristExplicit?'':' est'}): ~<b>${num(kpi.perDay)}</b> pass/day → notice ~<b>${num(kpi.notice)}</b> → look ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → browse ~<b>${Math.round(kpi.browse)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Capture ${(kpi.capEff*100).toFixed(1)}%${kpi.ff!==1?` (frontage ×${kpi.ff.toFixed(2)})`:''} → browse ${(kpi.brR*100).toFixed(0)}% → close ${(kpi.clEff*100).toFixed(0)}% × ${kpi.oph} busy hrs${kpi.pos!==1?` × pos ${kpi.pos}`:''} · ATV €${kpi.atvEff.toFixed(0)}.</span></div>`;}
+    d+=`<div class="muted" style="font-size:12px;margin-top:8px;padding:8px 10px;background:#F7F6FC;border-radius:8px;white-space:normal"><b>Behaviour funnel</b> (${esc(kpi.stlabel)}${kpi.stype===''?' type':''}, ${kpi.touristPct}% tourist${kpi.touristExplicit?'':' est'}): ~<b>${num(kpi.perDay)}</b> pass/day → notice ~<b>${num(kpi.notice)}</b> → look ~<b>${num(kpi.stop)}</b> → enter ~<b>${Math.round(kpi.entr)}</b> → browse ~<b>${Math.round(kpi.browse)}</b> → buy ~<b>${kpi.tx.toFixed(1)}</b> sales/day <span style="opacity:.75">(band ${kpi.txLo.toFixed(1)}–${kpi.txHi.toFixed(1)})</span> (${Math.round(kpi.vsPlan*100)}% of the ${Number(fin.tx1)||18}/day plan) → ~<b>${eur(kpi.eurMo)}/mo</b> <span style="opacity:.75">(season band ${eur(kpi.eurLo)}–${eur(kpi.eurHi)})</span>. Rent ${eur(l.rent)} = <b>${rr!=null?Math.round(rr)+'%':'—'}</b> of est. sales ${verdict}. <span style="opacity:.7">Capture ${(kpi.capEff*100).toFixed(1)}%${kpi.calibrated?' <b>(observed)</b>':(kpi.ff!==1?` (frontage ×${kpi.ff.toFixed(2)})`:'')} → browse ${(kpi.brR*100).toFixed(0)}% → close ${(kpi.clEff*100).toFixed(0)}% × ${kpi.oph} busy hrs${kpi.pos!==1?` × pos ${kpi.pos}`:''} · ATV €${kpi.atvEff.toFixed(0)}.</span></div>`;}
   d+=`<div style="margin-top:12px"><label class="muted" style="font-size:12px;display:block;margin-bottom:4px">Notes</label><textarea class="txa" onchange="updLoc('${l.id}','notes',this.value)">${esc(l.notes||'')}</textarea></div>`;
   return d+`</div>`;
 }
@@ -1942,6 +2009,7 @@ function viewLocation(){
   const S=[["maxRent","Max monthly rent (€)"],["sizeMin","Size min (m²)"],["sizeMax","Size max (m²)"],["maxM2","Max €/m²/mo"],["maxUpfrontMo","Max upfront (months)"],["maxTraspaso","Max traspaso (€)"]];
   h+=`<div class="card"><p class="sectiontitle">Settings — budget & thresholds</p><div style="display:flex;flex-wrap:wrap;gap:16px">`+S.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" value="${locSettings[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div></div>`;
   h+=footfallCard();
+  h+=bandCard();
   const stageCount=LOC_STAGES.reduce((o,s)=>{o[s]=locListings.filter(l=>(l.status||'Spotted')===s).length;return o;},{});
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Listings & search pipeline — screen each candidate, then work it</p>`;
   h+=`<p class="viewsub" style="margin:-6px 0 10px">Real Barcelona units are pre-loaded below (via habitaclia) — paste more from any portal. Screen against budget + the traspaso trap, set a <b>status</b>, and open <b>Details</b> to log the agent, next action, viewing checklist and observed footfall.</p>`;
@@ -2210,6 +2278,13 @@ function computeFinance(ovr){const f=ovr?Object.assign({},fin,ovr):fin;if(ovr&&o
   return {startupTotal,da,store,online,retail,b2b,promo,rev,cogs,gp,rent,util,pay,autonomo,mkt,ppr,ship,soft,gest,ins,adm,opex,ebitda,ebit,tax,ni,open,cfops,close,be,apFin};
 }
 function updFin(k,v){fin[k]=Number(v);render();}
+/* Confidence band on the headline P&L: scale store sales/day by the low/high band multipliers
+   (preserving the Y2/Y3 growth ratios) and re-run the full model, so the profit band is WIDER
+   than the revenue band — operating leverage: fixed costs don't fall when sales do. Other
+   channels (online/B2B/promo) are held flat; the band reflects store-capture uncertainty. */
+function _bandOvr(mult){const base=Number(fin.tx1)||0;const g2=base>0?fin.tx2/base:1.13,g3=base>0?fin.tx3/base:1.25;const tx=base*mult;return {tx1:Math.round(tx*10)/10,tx2:Math.round(tx*g2*10)/10,tx3:Math.round(tx*g3*10)/10};}
+function financeBand(){const b=convBand();const base=Number(fin.tx1)||0;if(base<=0)return null;
+  return {b,base,lo:computeFinance(_bandOvr(b.lo)),mid:computeFinance(),hi:computeFinance(_bandOvr(b.hi))};}
 /* ---- Launch-year monthly ramp ---- */
 let finMonthly={
  note:"Launch-year monthly ramp — how Year 1 builds month by month (opening ~Nov 2026). Weights are relative and always allocate the full annual Year-1 totals, so this reconciles to the model. Edit the weights to reshape the ramp & seasonality; running cash shows the intra-year trough the €200k must cover (deeper than the year-end figure).",
@@ -2245,6 +2320,8 @@ function viewFinance(){const F=computeFinance();
     <div class="card stat"><span class="k">Year-1 net income</span><span class="v" style="color:${F.ni[0]>=0?'var(--st-done)':'var(--st-blocked)'}">${eur(F.ni[0])}</span></div>
     <div class="card stat"><span class="k">Year-3 EBITDA</span><span class="v">${eur(F.ebitda[2])}</span></div>
     <div class="card stat"><span class="k">Closing cash Y1</span><span class="v" style="color:${F.close[0]>=0?'var(--st-done)':'var(--st-blocked)'}">${eur(F.close[0])}</span></div></div>`;
+  const _fb=financeBand();
+  if(_fb)h+=`<p class="muted" style="font-size:12px;margin:-8px 0 14px;padding:8px 11px;background:#F7F6FC;border-radius:8px">Confidence band (store-capture uncertainty <b>±${(_fb.b.swing*100).toFixed(0)}%</b>, from the Location model): Net Y1 <b>${eur(_fb.lo.ni[0])} – ${eur(_fb.hi.ni[0])}</b> · Revenue Y1 <b>${eur(_fb.lo.rev[0])} – ${eur(_fb.hi.rev[0])}</b> · Closing cash Y1 <b>${eur(_fb.lo.close[0])} – ${eur(_fb.hi.close[0])}</b>. Base figures above; band method &amp; dials in the Location tab's <b>Confidence bands</b> card.</p>`;
   h+=activeLocBanner();
   const rows=[["Retail — store",F.store,0],["Retail — online",F.online,0],["Retail — total",F.retail,1],["B2B (Y1 live from pipeline)",F.b2b,0],["Promotional (Y1 live from pipeline)",F.promo,0],["TOTAL REVENUE",F.rev,2],["Total COGS",F.cogs,0],["GROSS PROFIT",F.gp,2],["Rent",F.rent,0],["Utilities",F.util,0],["Payroll",F.pay,0],["Autónomo (founders' SS)",F.autonomo,0],["Marketing",F.mkt,0],["Payment processing",F.ppr,0],["Shipping",F.ship,0],["Software",F.soft,0],["Gestoría",F.gest,0],["Insurance",F.ins,0],["Other admin",F.adm,0],["Total opex",F.opex,1],["EBITDA",F.ebitda,2],["D&A",[F.da,F.da,F.da],0],["EBIT",F.ebit,1],["Tax",F.tax,0],["NET INCOME",F.ni,2],["Opening cash",F.open,0],["Operating cash (NI+D&A)",F.cfops,0],["Closing cash",F.close,1],["Break-even revenue",F.be,0]];
   h+=`<div class="card"><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>€ (net of IVA)</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>`;
