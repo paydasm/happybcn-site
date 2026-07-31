@@ -558,28 +558,105 @@ function renderHeaderProgress(){
   $("#hbarfill").style.width=p+"%";
 }
 
+/* ===================== Section Excel export (client-side, xlsx-js-style) ===================== */
+let _xlsxP=null;
+function ensureXLSX(){
+  if(window.XLSX&&XLSX.writeFile)return Promise.resolve();
+  if(_xlsxP)return _xlsxP;
+  _xlsxP=new Promise(function(res,rej){
+    var s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js';
+    s.onload=function(){res();}; s.onerror=function(){_xlsxP=null;rej(new Error('load'));};
+    document.head.appendChild(s);
+  });
+  return _xlsxP;
+}
+var _HDR={fill:{fgColor:{rgb:'1F2440'}},font:{name:'Arial',bold:true,color:{rgb:'FFFFFF'},sz:10},alignment:{horizontal:'center',vertical:'center',wrapText:true}};
+function _mkSheet(aoa,cols,fmts,colorRules){
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  var rng=XLSX.utils.decode_range(ws['!ref']);
+  for(var C=rng.s.c;C<=rng.e.c;C++){var a=XLSX.utils.encode_cell({r:0,c:C});if(ws[a])ws[a].s=_HDR;}
+  for(var R=1;R<=rng.e.r;R++)for(var C2=rng.s.c;C2<=rng.e.c;C2++){
+    var ad=XLSX.utils.encode_cell({r:R,c:C2});var cell=ws[ad];if(!cell)continue;
+    var st={font:{name:'Arial',sz:10},alignment:{vertical:'center',wrapText:true}};
+    if(fmts&&fmts[C2])cell.z=fmts[C2];
+    if(colorRules&&colorRules[C2]&&cell.v!=null&&colorRules[C2][cell.v]){st.fill={fgColor:{rgb:colorRules[C2][cell.v]}};st.font={name:'Arial',sz:10,bold:true};}
+    cell.s=st;
+  }
+  if(cols)ws['!cols']=cols;
+  return ws;
+}
+function _save(wb,base){var d=new Date().toISOString().slice(0,10);XLSX.writeFile(wb,'HappyBCN-'+base+'-'+d+'.xlsx');}
+function dlBar(v){
+  var lbl={finance:'Download Excel model',roadmap:'Download checklist (Excel)',b2b:'Download B2B pipeline (Excel)',promo:'Download Promo pipeline (Excel)',launch:'Download KPIs (Excel)'}[v]||'Download Excel';
+  return '<div style="margin:-8px 0 14px"><button class="btn solid" style="font-size:12.5px;padding:6px 12px" onclick="exportSection(\''+v+'\')">⬇ '+lbl+'</button> <span class="muted" style="font-size:11.5px">current data, live from this workspace</span></div>';
+}
+function exportSection(kind){
+  ensureXLSX().then(function(){try{_buildExport(kind);}catch(e){alert('Export failed: '+e.message);}})
+   .catch(function(){alert('Could not load the Excel exporter — this needs an internet connection. Please try again while online.');});
+}
+function _buildExport(kind){
+  var wb=XLSX.utils.book_new();var eurZ='€#,##0;(€#,##0)';
+  if(kind==='finance'){
+    var F=computeFinance(),M=computeMonthly();
+    var pl=[['€ (net of IVA)','Year 1','Year 2','Year 3']];
+    [['Retail — store','store'],['Retail — online','online'],['Retail — total','retail'],['B2B','b2b'],['Promotional','promo'],['TOTAL REVENUE','rev'],['Total COGS','cogs'],['GROSS PROFIT','gp'],['Rent','rent'],['Utilities','util'],['Payroll','pay'],['Autónomo','autonomo'],['Marketing','mkt'],['Payment processing','ppr'],['Shipping','ship'],['Software','soft'],['Gestoría','gest'],['Insurance','ins'],['Other admin','adm'],['Total opex','opex'],['EBITDA','ebitda'],['EBIT','ebit'],['Tax','tax'],['NET INCOME','ni'],['Opening cash','open'],['Operating cash','cfops'],['Closing cash','close'],['Break-even revenue','be']].forEach(function(r){var a=F[r[1]];if(a)pl.push([r[0],Math.round(a[0]),Math.round(a[1]),Math.round(a[2])]);});
+    XLSX.utils.book_append_sheet(wb,_mkSheet(pl,[{wch:22},{wch:14},{wch:14},{wch:14}],{1:eurZ,2:eurZ,3:eurZ}),'P&L');
+    var mo=[['Month','Revenue','EBITDA','Running cash']];M.rows.forEach(function(r){mo.push([r.m,Math.round(r.rev),Math.round(r.ebitda),Math.round(r.cash)]);});
+    XLSX.utils.book_append_sheet(wb,_mkSheet(mo,[{wch:11},{wch:14},{wch:14},{wch:14}],{1:eurZ,2:eurZ,3:eurZ}),'Monthly ramp');
+    var A=[['Assumption','Value']];[['Net ATV €','atv'],['Tx/day Y1','tx1'],['Tx/day Y2','tx2'],['Tx/day Y3','tx3'],['Trading days/mo','days'],['B2B Y1 €','b2b1'],['Promo Y1 €','promo1'],['Retail margin','mR'],['B2B margin','mB'],['Promo margin','mP'],['Rent €/mo','rent'],['Marketing %','mkt'],['Partner equity €','equity'],['Launch payment term €','apFinanced']].forEach(function(r){A.push([r[0],fin[r[1]]]);});
+    XLSX.utils.book_append_sheet(wb,_mkSheet(A,[{wch:24},{wch:14}]),'Assumptions');
+    _save(wb,'Financial-Model');
+  } else if(kind==='roadmap'){
+    var aoa=[['Stage','Task','Owner','Status','Steps done','Steps total','% complete']];
+    stages.forEach(function(s){stageTasks(s.id).forEach(function(t){var p=taskProg(t);aoa.push([s.title,t.title,ownerName(t.owner),t.status,p?p.d:'',p?p.n:'',p?p.pct/100:'']);});});
+    var col={'Done':'D8F3E6','In progress':'FDF0CC','Blocked':'FBD9D9','Not started':'EEF0F6'};
+    XLSX.utils.book_append_sheet(wb,_mkSheet(aoa,[{wch:34},{wch:50},{wch:20},{wch:13},{wch:11},{wch:11},{wch:11}],{6:'0%'},{3:col}),'Checklist');
+    _save(wb,'Launch-Checklist');
+  } else if(kind==='b2b'||kind==='promo'){
+    var P=PIPE[kind],w=P.settings.weights;
+    var head=['Account','Type','Stage','Est. value (€)'].concat(P.crit).concat(['Fit','Priority']);
+    var rows=P.rows.map(function(r){var f=pipeFit(r,w);return {r:r,f:f,pr:pipePriority(f,r.value,P.settings)};});
+    rows.sort(function(a,b){return (b.f||0)-(a.f||0)||(Number(b.r.value)||0)-(Number(a.r.value)||0);});
+    var aoa=[head];
+    rows.forEach(function(o){aoa.push([o.r.account,o.r.type,o.r.stage,Number(o.r.value)||0].concat((o.r.scores||[]).map(function(x){return Number(x)||0;})).concat([o.f!=null?Math.round(o.f*100)/100:'',o.pr]));});
+    var priCol=head.length-1, fitCol=head.length-2;
+    var fmts={};fmts[3]='€#,##0';fmts[fitCol]='0.00';
+    var cr={};cr[priCol]={'High':'D8F3E6','Med':'FDF0CC','Low':'EEF0F6'};
+    XLSX.utils.book_append_sheet(wb,_mkSheet(aoa,[{wch:34},{wch:16},{wch:12},{wch:13},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:7},{wch:9}],fmts,cr),(kind==='b2b'?'B2B':'Promo')+' Pipeline');
+    _save(wb,(kind==='b2b'?'B2B':'Promo')+'-Pipeline');
+  } else if(kind==='launch'){
+    var aoa=[['KPI','Target','Actual (fill in)']];launch.kpis.forEach(function(k){aoa.push([k.metric,k.target,k.actual||'']);});
+    XLSX.utils.book_append_sheet(wb,_mkSheet(aoa,[{wch:34},{wch:34},{wch:16}]),'KPIs');
+    _save(wb,'Launch-KPIs');
+  }
+}
 function render(){
   renderTabs();
   renderHeaderProgress();
   const m=$("#main");
-  if(view==="summary") m.innerHTML=viewSummary();
-  else if(view==="vision") m.innerHTML=viewVision();
-  else if(view==="dashboard") m.innerHTML=viewDashboard();
-  else if(view==="roadmap") m.innerHTML=viewRoadmap();
-  else if(view==="review") m.innerHTML=viewReview();
-  else if(view==="segments") m.innerHTML=viewSegments();
-  else if(view==="brand") m.innerHTML=viewBrand();
-  else if(view==="location") m.innerHTML=viewLocation();
-  else if(view==="fitout") m.innerHTML=viewFitout();
-  else if(view==="sourcing") m.innerHTML=viewSourcing();
-  else if(view==="b2b") m.innerHTML=viewPipe("b2b");
-  else if(view==="promo") m.innerHTML=viewPipe("promo");
-  else if(view==="finance") m.innerHTML=viewFinance();
-  else if(view==="market") m.innerHTML=viewMarket();
-  else if(view==="launch") m.innerHTML=viewLaunch();
-  else if(view==="outreach") m.innerHTML=viewOutreach();
-  else if(view==="team") m.innerHTML=viewTeam();
-  else if(view==="growth") m.innerHTML=viewGrowth();
+  let out="";
+  if(view==="summary") out=viewSummary();
+  else if(view==="vision") out=viewVision();
+  else if(view==="dashboard") out=viewDashboard();
+  else if(view==="roadmap") out=viewRoadmap();
+  else if(view==="review") out=viewReview();
+  else if(view==="segments") out=viewSegments();
+  else if(view==="brand") out=viewBrand();
+  else if(view==="location") out=viewLocation();
+  else if(view==="fitout") out=viewFitout();
+  else if(view==="sourcing") out=viewSourcing();
+  else if(view==="b2b") out=viewPipe("b2b");
+  else if(view==="promo") out=viewPipe("promo");
+  else if(view==="finance") out=viewFinance();
+  else if(view==="market") out=viewMarket();
+  else if(view==="launch") out=viewLaunch();
+  else if(view==="outreach") out=viewOutreach();
+  else if(view==="team") out=viewTeam();
+  else if(view==="growth") out=viewGrowth();
+  const DLV={finance:1,roadmap:1,b2b:1,promo:1,launch:1};
+  if(DLV[view]) out=out.replace('</h2>','</h2>'+dlBar(view));
+  m.innerHTML=out;
   upgradeBoxes(m);
   if(typeof scheduleSave==='function') scheduleSave();
 }
