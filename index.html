@@ -2323,8 +2323,8 @@ function locCompareCard(){
   ensureScenarios();
   const scs=locScenarios;
   const comp=scs.map(sc=>{const inp=scenarioInputs(sc);const F=computeFinance(inp.ovr);const MM=computeMonthly(inp.ovr);const pb=paybackYrs(F);const cum=F.cfops[0]+F.cfops[1]+F.cfops[2];return {sc,inp,F,MM,pb,cum};});
-  let bestCum=-Infinity,bci=-1,bestPb=Infinity,bpi=-1;
-  comp.forEach((c,i)=>{if(c.cum>bestCum){bestCum=c.cum;bci=i;}const p=(c.pb==null)?Infinity:c.pb;if(p<bestPb){bestPb=p;bpi=i;}});
+  let bestCum=-Infinity,bci=-1,bestPb=Infinity,bpi=-1,bestNi=-Infinity,bni=-1;
+  comp.forEach((c,i)=>{if(c.cum>bestCum){bestCum=c.cum;bci=i;}const p=(c.pb==null)?Infinity:c.pb;if(p<bestPb){bestPb=p;bpi=i;}if(c.F.ni[2]>bestNi){bestNi=c.F.ni[2];bni=i;}});
   const listOpts=(sel)=>`<option value="">— none —</option>`+(locListings||[]).map(l=>`<option value="${l.id}" ${l.id===sel?'selected':''}>${esc((l.area||l.id).slice(0,34))}</option>`).join('');
   const strOpts=(sel)=>`<option value="">— base footfall —</option>`+(locStreets||[]).map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${esc((s.name||s.id).slice(0,30))}</option>`).join('');
   const pbTxt=(p)=>p==null?'&gt;3 yr':(p<=3?p.toFixed(1)+' yr':'&gt;3 yr ('+p.toFixed(1)+')');
@@ -2338,8 +2338,10 @@ function locCompareCard(){
   h+=row('Payback (on setup capital)',c=>pbTxt(c.pb),{bold:1,best:bpi});
   h+=row('Closing cash — Year 3',c=>eur(c.F.close[2]),{});
   h+=row('Cash trough (Year 1)',c=>`<span style="color:${c.MM.trough.cash>=0?'inherit':'#EF4444'}">${eur(c.MM.trough.cash)}</span>`,{});
-  h+=row('Revenue — Year 1',c=>eur(c.F.rev[0]),{});
+  h+=row('Revenue — Year 1',c=>eur(c.F.rev[0]),{hdr:1});
   h+=row('Revenue — Year 3',c=>eur(c.F.rev[2]),{});
+  h+=row('Net profit — Year 1',c=>{const v=c.F.ni[0];return `<span style="color:${v<0?'#EF4444':'inherit'}">${eur(v)}</span>`;},{});
+  h+=row('Net profit — Year 3',c=>{const v=c.F.ni[2];const best=(c===comp[bni]);return `<span style="color:${v<0?'#EF4444':(best?'#1FA97A':'inherit')};font-weight:${best?'800':'600'}">${eur(v)}</span>`;},{bold:1});
   h+=row('EBITDA — Year 3',c=>eur(c.F.ebitda[2]),{});
   h+=row('Store sales/day — Y1',c=>c.inp.tx1.toFixed(1)+(c.inp.txSrc==='street'?'':' *'),{});
   h+=row('Net ATV',c=>eur(c.inp.atv),{});
