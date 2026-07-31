@@ -637,7 +637,7 @@ function viewSummary(){
  h+=activeLocBanner();
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Financial plan (3 years, net of IVA)</p><div style="overflow-x:auto"><table class="grid2"><thead><tr><th>€</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody>`+
   [["Revenue",F.rev],["Gross profit",F.gp],["Net income",F.ni],["Closing cash",F.close]].map(x=>`<tr><td style="font-weight:700">${x[0]}</td>`+x[1].map(v=>`<td>${eur(v)}</td>`).join("")+`</tr>`).join("")+
-  `</tbody></table></div><p class="muted" style="font-size:12px;margin-top:6px">Self-funded: ${eur(fin.equity)} partner equity${(fin.apFinanced>0)?' + '+eur(fin.apFinanced)+' opening stock on HQ partner terms':''} covers the ${eur(F.startupTotal)} of startup cost plus the early operating losses; lowest cash on plan is ${eur(lowCash)}. Reconciled with the standalone Excel model.</p></div>`;
+  `</tbody></table></div><p class="muted" style="font-size:12px;margin-top:6px">Self-funded: ${eur(fin.equity)} partner equity covers the ${eur(F.startupTotal)} of startup cost plus the early operating losses${(fin.apFinanced>0)?` — of which ${eur(fin.apFinanced)} (the opening order) is on an HQ launch payment term, so it's paid from early sales rather than funded upfront, easing the launch-phase cash need`:''}; lowest cash on plan is ${eur(lowCash)}. Reconciled with the standalone Excel model.</p></div>`;
  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Where it stands</p><p style="line-height:1.7;font-size:14px">
    <b>Pipelines:</b> ${bLeads} B2B + ${pLeads} Promo researched leads, scored &amp; prioritized, with ${wave} tagged as the winnable first wave.<br>
    <b>Launch:</b> full go-to-market kit — plan, press kit, creator &amp; content assets (ES/CA/EN), a ${lt.n}-task checklist (all assigned) and 9 KPIs; a live sign-up page is already collecting pre-launch leads.<br>
@@ -2114,7 +2114,7 @@ function b2bWonValue(){return PIPE.b2b.rows.filter(r=>r.stage==='Won').reduce((a
 function promoWonValue(){return PIPE.promo.rows.filter(r=>r.stage==='Won').reduce((a,r)=>a+(Number(r.value)||0),0);}
 function computeFinance(ovr){const f=ovr?Object.assign({},fin,ovr):fin;if(ovr&&ovr.startup)f.startup=Object.assign({},fin.startup,ovr.startup);
   const startupTotal=Object.values(f.startup).reduce((a,b)=>a+b,0);const da=f.startup.fitout/f.dep;
-  const apFin=Math.min(Number(f.apFinanced)||0,startupTotal);   // opening stock / COGS financed by HQ partner terms — not funded from equity
+  const apFin=Math.min(Number(f.apFinanced)||0,startupTotal);   // HQ launch payment term — opening order deferred, paid from early sales (eases the launch-phase cash, not free capital)
   // Launch timing flexes Year-1 (ramp-up × season); a lighter momentum carryover ripples it into Y2/Y3.
   const _m=(typeof momentumFactors==='function')?momentumFactors():{mf1:1,mf2:1,mf3:1};
   const store=[f.atv*f.tx1*f.days*f.smo1*_m.mf1,f.atv*f.tx2*f.days*12*_m.mf2,f.atv*f.tx3*f.days*12*_m.mf3];
@@ -2137,7 +2137,7 @@ function computeFinance(ovr){const f=ovr?Object.assign({},fin,ovr):fin;if(ovr&&o
   const ebitda=gp.map((v,i)=>v-opex[i]);const ebit=ebitda.map(v=>v-da);
   const tax=ebit.map((v,i)=>-Math.max(0,v)*(i<2?f.ctx12:f.ctx3));const ni=ebit.map((v,i)=>v+tax[i]);
   const cfops=ni.map((v,i)=>v+da);const open=[f.equity,0,0],close=[0,0,0];
-  close[0]=open[0]-(startupTotal-apFin)+cfops[0];open[1]=close[0];close[1]=open[1]+cfops[1];open[2]=close[1];close[2]=open[2]+cfops[2];
+  close[0]=open[0]-startupTotal+cfops[0];open[1]=close[0];close[1]=open[1]+cfops[1];open[2]=close[1];close[2]=open[2]+cfops[2];   // launch payment term eases the intra-year trough (see computeMonthly), not the year-end cash — it's repaid from early sales
   const be=rev.map((v,i)=>{const fixed=rent[i]+util[i]+pay[i]+autonomo[i]+soft[i]+gest[i]+ins[i]+adm[i]+da;const cm=(gp[i]-mkt[i]-ppr[i]-ship[i])/v;return cm>0?fixed/cm:0;});
   return {startupTotal,da,store,online,retail,b2b,promo,rev,cogs,gp,rent,util,pay,autonomo,mkt,ppr,ship,soft,gest,ins,adm,opex,ebitda,ebit,tax,ni,open,cfops,close,be,apFin};
 }
@@ -2167,7 +2167,7 @@ function computeMonthly(ovr){
  const startCash=f.equity-(F.startupTotal-(F.apFin||0));let cash=startCash;const rows=[];let trough={cash:Infinity,m:'',idx:-1};
  M.forEach((x,i)=>{const rr=(Number(x.r)||0)/sR*R,bb=(Number(x.b)||0)/sB*B,pp=(Number(x.p)||0)/sP*P;const rev=rr+bb+pp;
   const cogs=rr*(1-f.mR)+bb*(1-f.mB)+pp*(1-f.mP);const gp=rev-cogs;const varc=f.mkt*rev+f.pay*rr;const opex=fixedMo+varc;const ebitda=gp-opex;
-  cash+=ebitda;if(cash<trough.cash)trough={cash,m:x.m,idx:i};rows.push({m:x.m,rev,opex,ebitda,cash});});
+  cash+=ebitda;if(i===2)cash-=(F.apFin||0);if(cash<trough.cash)trough={cash,m:x.m,idx:i};rows.push({m:x.m,rev,opex,ebitda,cash});});   // repay the HQ launch-order payment term ~month 3, from early sales
  return {rows,startCash,trough,fixedMo,totRev:rows.reduce((a,r)=>a+r.rev,0)};
 }
 function viewFinance(){const F=computeFinance();
@@ -2183,7 +2183,7 @@ function viewFinance(){const F=computeFinance();
   rows.forEach(([lab,arr,w])=>{const st=w>=1?'font-weight:800':'';h+=`<tr class="${w===2?'subhdr':''}"><td style="${st}">${lab}</td>`+arr.map(v=>`<td style="${st}">${eur(v)}</td>`).join("")+`</tr>`;});
   h+=`</tbody></table></div></div>`;
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Key assumptions (edit — model recalculates live)</p><div style="display:flex;flex-wrap:wrap;gap:14px">`;
-  const A=[["atv","Store ATV net €"],["tx1","Store tx/day Y1"],["tx3","Store tx/day Y3"],["days","Open days/mo"],["b2b1","B2B €/yr — Year 1"],["promo1","Promo €/yr — Year 1"],["acc2","B2B accounts Y2"],["acc3","B2B accounts Y3"],["racc","B2B €/account"],["con2","Promo contracts Y2"],["con3","Promo contracts Y3"],["rcon","Promo €/contract"],["ord3","Online orders/mo Y3"],["aov","Online AOV €"],["mR","Retail margin"],["mB","B2B margin"],["mP","Promo margin"],["rent","Rent €/mo"],["mkt","Marketing %"],["mgr1","Founder salary Y1 €"],["mgr","Founder salary Y2+ €"],["autoMo","Autónomo €/mo each"],["autoN","Founders on autónomo"],["apFinanced","HQ-financed stock/COGS (terms) €"],["equity","Partner equity €"]];
+  const A=[["atv","Store ATV net €"],["tx1","Store tx/day Y1"],["tx3","Store tx/day Y3"],["days","Open days/mo"],["b2b1","B2B €/yr — Year 1"],["promo1","Promo €/yr — Year 1"],["acc2","B2B accounts Y2"],["acc3","B2B accounts Y3"],["racc","B2B €/account"],["con2","Promo contracts Y2"],["con3","Promo contracts Y3"],["rcon","Promo €/contract"],["ord3","Online orders/mo Y3"],["aov","Online AOV €"],["mR","Retail margin"],["mB","B2B margin"],["mP","Promo margin"],["rent","Rent €/mo"],["mkt","Marketing %"],["mgr1","Founder salary Y1 €"],["mgr","Founder salary Y2+ €"],["autoMo","Autónomo €/mo each"],["autoN","Founders on autónomo"],["apFinanced","Launch payment term — HQ €"],["equity","Partner equity €"]];
   A.forEach(([k,l])=>h+=`<div class="setrow"><label>${l}</label><input class="num" type="number" step="any" value="${fin[k]}" onchange="updFin('${k}',this.value)"></div>`);
   h+=`</div><p class="muted" style="font-size:12px;margin-top:8px">Year-1 B2B/Promo revenue = <b>max(Won deals, planned floor)</b>. Won so far: B2B <b>${eur(b2bWonValue())}</b>, Promo <b>${eur(promoWonValue())}</b> (planned floor set by the "€/yr — Year 1" inputs). Aligned with the standalone Excel model.</p></div>`;
   // Launch-year monthly ramp
@@ -2192,7 +2192,7 @@ function viewFinance(){const F=computeFinance();
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Launch-year monthly ramp (assumptions)</p><p class="viewsub" style="margin:-6px 0 10px">`+esc(finMonthly.note)+`</p>`;
   h+=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;padding:8px 10px;background:#F7F6FC;border-radius:8px"><label class="bb" style="margin:0">Launch month</label><select class="sel" onchange="setLaunchStart(this.value, ${_ls.yr})">`+MON3.map((mo,j)=>`<option value="${j+1}" ${_ls.mo===j+1?'selected':''}>${mo}</option>`).join('')+`</select><select class="sel" onchange="setLaunchStart(${_ls.mo}, this.value)">${launchYearOpts(_ls.yr)}</select><span class="muted" style="font-size:11.5px">— sets the 12 month labels below; the retail/B2B/promo weights are the ramp <i>shape</i> by position. Per-product seasonality (By Segment) re-aligns to the calendar automatically.</span></div>`;
   h+=`<div class="grid g4" style="margin-bottom:14px">
-    <div class="card stat"><span class="k">Opening cash (after startup)</span><span class="v">${eur(MM.startCash)}</span><span class="sub">${eur(fin.equity)} equity − ${eur(F.startupTotal-(F.apFin||0))} startup cash${(F.apFin>0)?' · '+eur(F.apFin)+' on HQ terms':''}</span></div>
+    <div class="card stat"><span class="k">Opening cash (after startup)</span><span class="v">${eur(MM.startCash)}</span><span class="sub">${eur(fin.equity)} equity − ${eur(F.startupTotal-(F.apFin||0))} paid at open${(F.apFin>0)?' · '+eur(F.apFin)+' order on launch term':''}</span></div>
     <div class="card stat"><span class="k">Cash trough (Year 1)</span><span class="v" style="color:${MM.trough.cash>=0?'var(--st-inprogress)':'var(--st-blocked)'}">${eur(MM.trough.cash)}</span><span class="sub">in ${esc(MM.trough.m)} · vs €${Math.round(F.close[0]/1000)}k year-end</span></div>
     <div class="card stat"><span class="k">Fixed cost / month</span><span class="v">${eur(MM.fixedMo)}</span><span class="sub">rent, payroll, utils, admin…</span></div>
     <div class="card stat"><span class="k">Year-1 revenue (check)</span><span class="v">${eur(MM.totRev)}</span><span class="sub">= annual model ${eur(F.rev[0])}</span></div></div>`;
