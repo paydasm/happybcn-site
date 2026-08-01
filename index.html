@@ -1770,27 +1770,23 @@ function updStreet(id,k,v){const x=locStreets.find(r=>r.id===id);if(x){x[k]=["na
 function addStreet(){locStreets.push({id:"ST"+(_stid++),area:"",name:"",foot:"",sfWk:"",sfWe:"",fit:"",hrs:"",rentBand:"",anchors:"",src:"est",note:""});render();}
 function rmStreet(id){locStreets=locStreets.filter(r=>r.id!==id);render();}
 function streetsCard(){
-  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Streets — rank within a neighbourhood <span class="badge">footfall × brand-fit</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">The editable data behind the ranking above — enter each street's footfall and edit its type here. <b>Wk/We /10min</b> = estimated footfall (from Google popular-times where marked <b>data</b>, else a street-knowledge estimate). <b>Entry</b> = footfall × capture → <b>Sales/day</b> = × audience-weighted buy-rate, shown vs the ${Number(fin.tx1)||18}/day plan. Rows are sorted by modeled <b>Sales/day</b> (same order as the ranking); the <b>Score</b> column is the separate footfall/5 × 0.6 + brand-fit/5 × 0.4 rating.</p>`;
-  const rows=locStreets.slice().sort((a,b)=>{const ka=streetKPI(a),kb=streetKPI(b);return ((kb?kb.tx:(streetScore(b)??-1))-(ka?ka.tx:(streetScore(a)??-1)));});
-  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Street</th><th>Area</th><th>Footfall /5</th><th>Wk /10min</th><th>We /10min</th><th>Brand-fit /5</th><th>Busy hrs</th><th>Entry (entrants/day)</th><th>Sales/day</th><th>Rent</th><th>Key anchors</th><th>Score</th><th>Type</th><th>Src</th><th></th></tr></thead><tbody>`;
-  rows.forEach(s=>{const sc=streetScore(s),k=streetKPI(s);
+  const meas=locStreets.filter(s=>s.src==='data').length, est=locStreets.length-meas;
+  let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street footfall — data &amp; inputs <span class="badge">the numbers behind the ranking</span></p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">The raw footfall the ranking runs on — <b>edit it here</b>. <b>Wk/We /10min</b> = pedestrians per 10 min, weekday and Saturday. <b>Src = data</b> (Measured) means read off Google Maps <i>popular times</i> for a named anchor — a proxy curve, not a turnstile; <b>est</b> is street-knowledge judgement. It converts to <b>≈ footfall/day</b> as blend × 6 × busy hours (blend weights Mon–Sat 5:1, Saturday at the weekend rate). <b>${meas}</b> of ${locStreets.length} streets are anchored to a popular-times read; ${est} are estimates — every figure is provisional until a real on-street count replaces it. All the conversion factors (intent, capture, adjacency, competition…) are edited in the <b>ranking above</b>; this table is just the footfall data feeding it.</p>`;
+  const rows=locStreets.slice().sort((a,b)=>{const ka=streetKPI(a),kb=streetKPI(b);return ((kb?kb.perDay:-1)-(ka?ka.perDay:-1));});
+  h+=`<div style="overflow-x:auto"><table class="grid2"><thead><tr><th>Street</th><th>Area</th><th>Src</th><th>Wk /10min</th><th>We /10min</th><th>Busy hrs</th><th>≈ Footfall/day</th><th>Type</th><th>Basis / named anchor</th><th></th></tr></thead><tbody>`;
+  rows.forEach(s=>{const k=streetKPI(s);
     h+=`<tr><td style="min-width:130px"><input class="txt" value="${escAttr(s.name)}" onchange="updStreet('${s.id}','name',this.value)"></td>`+
-    `<td><input class="txt" style="width:78px" value="${escAttr(s.area)}" onchange="updStreet('${s.id}','area',this.value)"></td>`+
-    `<td><input class="num" style="width:44px" type="number" min="1" max="5" value="${s.foot??''}" onchange="updStreet('${s.id}','foot',this.value)"></td>`+
-    `<td><input class="num" style="width:50px" type="number" value="${s.sfWk??''}" onchange="updStreet('${s.id}','sfWk',this.value)"></td>`+
-    `<td><input class="num" style="width:50px" type="number" value="${s.sfWe??''}" onchange="updStreet('${s.id}','sfWe',this.value)"></td>`+
-    `<td><input class="num" style="width:44px" type="number" min="1" max="5" value="${s.fit??''}" onchange="updStreet('${s.id}','fit',this.value)"></td>`+
-    `<td><input class="num" style="width:44px" type="number" value="${s.hrs??''}" onchange="updStreet('${s.id}','hrs',this.value)"></td>`+
-    `<td>${k?Math.round(k.entr):'—'}</td>`+
-    `<td style="font-weight:700">${k?k.tx.toFixed(1)+` <span style="opacity:.6;font-weight:400">(${Math.round(k.vsPlan*100)}% of plan)</span>`:'—'}</td>`+
-    `<td><input class="txt" style="width:56px" value="${escAttr(s.rentBand)}" onchange="updStreet('${s.id}','rentBand',this.value)"></td>`+
-    `<td style="min-width:150px"><input class="txt" value="${escAttr(s.anchors)}" onchange="updStreet('${s.id}','anchors',this.value)"></td>`+
-    `<td style="font-weight:800">${sc!=null?sc.toFixed(1):'—'}</td>`+
-    `<td><select class="sel" style="max-width:120px" onchange="updStreet('${s.id}','stype',this.value)">${STYPE_KEYS.map(k=>`<option value="${k}" ${((s.stype||'')===k)?'selected':''}>${esc(STYPE[k].label)}</option>`).join('')}</select></td>`+
+    `<td><input class="txt" style="width:82px" value="${escAttr(s.area)}" onchange="updStreet('${s.id}','area',this.value)"></td>`+
     `<td>${selOpts(STREET_SRC,s.src,`updStreet('${s.id}','src',this.value)`)}</td>`+
+    `<td><input class="num" style="width:52px" type="number" value="${s.sfWk??''}" onchange="updStreet('${s.id}','sfWk',this.value)"></td>`+
+    `<td><input class="num" style="width:52px" type="number" value="${s.sfWe??''}" onchange="updStreet('${s.id}','sfWe',this.value)"></td>`+
+    `<td><input class="num" style="width:44px" type="number" value="${s.hrs??''}" onchange="updStreet('${s.id}','hrs',this.value)"></td>`+
+    `<td style="font-weight:700">${k?num(k.perDay):'—'}</td>`+
+    `<td><select class="sel" style="max-width:120px" onchange="updStreet('${s.id}','stype',this.value)">${STYPE_KEYS.map(t=>`<option value="${t}" ${((s.stype||'')===t)?'selected':''}>${esc(STYPE[t].label)}</option>`).join('')}</select></td>`+
+    `<td style="min-width:190px"><input class="txt" value="${escAttr(s.anchors)}" placeholder="named anchor / footfall basis" onchange="updStreet('${s.id}','anchors',this.value)"></td>`+
     `<td><button class="rmv" onclick="rmStreet('${s.id}')">×</button></td></tr>`;
-    if(s.note)h+=`<tr><td></td><td colspan="14" class="muted" style="font-size:12px;white-space:normal;padding-top:0;font-weight:400">${esc(s.note)}</td></tr>`;});
+    if(s.note)h+=`<tr><td></td><td colspan="9" class="muted" style="font-size:12px;white-space:normal;padding-top:0;font-weight:400">${esc(s.note)}</td></tr>`;});
   h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addStreet()">+ add street</button></div></div>`;
   return h;
 }
@@ -2089,13 +2085,12 @@ function viewLocation(){
   h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addArea()">+ Add neighbourhood</button></div></div>`;
   h+=streetRankCard();
   h+=streetsCard();
-  h+=footfallRefCard();
-  const S=[["maxRent","Max monthly rent (€)"],["sizeMin","Size min (m²)"],["sizeMax","Size max (m²)"],["maxM2","Max €/m²/mo"],["maxUpfrontMo","Max upfront (months)"],["maxTraspaso","Max traspaso (€)"]];
-  h+=`<div class="card"><p class="sectiontitle">Settings — budget & thresholds</p><div style="display:flex;flex-wrap:wrap;gap:16px">`+S.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" value="${locSettings[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div></div>`;
   h+=footfallCard();
   h+=destinationCard();
   h+=bandCard();
   const stageCount=LOC_STAGES.reduce((o,s)=>{o[s]=locListings.filter(l=>(l.status||'Spotted')===s).length;return o;},{});
+  const S=[["maxRent","Max monthly rent (€)"],["sizeMin","Size min (m²)"],["sizeMax","Size max (m²)"],["maxM2","Max €/m²/mo"],["maxUpfrontMo","Max upfront (months)"],["maxTraspaso","Max traspaso (€)"]];
+  h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Settings — budget &amp; thresholds <span class="badge">screen the listings below</span></p><div style="display:flex;flex-wrap:wrap;gap:16px">`+S.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" value="${locSettings[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div></div>`;
   h+=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Listings & search pipeline — screen each candidate, then work it</p>`;
   h+=`<p class="viewsub" style="margin:-6px 0 10px">Real Barcelona units are pre-loaded below (via habitaclia) — paste more from any portal. Screen against budget + the traspaso trap, set a <b>status</b>, and open <b>Details</b> to log the agent, next action, viewing checklist and observed footfall.</p>`;
   h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px">`+LOC_STAGES.map(s=>`<span class="flag" style="background:#F0EEF9;color:#4A4E63;font-weight:700">${esc(s)} ${stageCount[s]}</span>`).join("")+`</div>`;
