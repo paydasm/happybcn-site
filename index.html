@@ -184,6 +184,15 @@
   table.grid2 th:first-child,table.grid2 td:first-child{text-align:left}
   table.grid2 thead th{background:#1D2233;color:#fff;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
   table.grid2 tr.subhdr td{background:#F4F2FC;font-weight:800}
+  /* ---- Location-tab wide tables: freeze the label / street-name column while scrolling sideways ---- */
+  .locview table.grid2 td:first-child,.locview table.grid2 th:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 5px -2px rgba(29,34,51,.16)}
+  .locview table.grid2 thead th:first-child{background:#1D2233;z-index:3}
+  .locview table.grid2 tr.subhdr td:first-child{background:#F4F2FC}
+  .locview table.grid2 tr.drawer td:first-child{background:#FAF9FE}
+  /* street ranking: col 1 is the rank #, so pin BOTH the # and the street-name column (col 2) */
+  .locview table.grid2.rank td:nth-child(1),.locview table.grid2.rank th:nth-child(1){width:26px;min-width:26px;max-width:26px;padding-left:4px;padding-right:4px;box-shadow:none}
+  .locview table.grid2.rank td:nth-child(2),.locview table.grid2.rank th:nth-child(2){position:sticky;left:26px;z-index:2;background:#fff;box-shadow:2px 0 5px -2px rgba(29,34,51,.16)}
+  .locview table.grid2.rank thead th:nth-child(2){background:#1D2233;z-index:3}
   .setrow{display:flex;align-items:center;gap:8px;margin:0 0 8px}
   .setrow label{font-size:12.5px;min-width:150px;color:var(--ink2)}
   .bb{display:block;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink2);margin:0 0 5px}
