@@ -1508,7 +1508,7 @@ function selOpts(opts,val,handler){return `<select class="sel" onchange="${handl
 let _lid=100,_pid=100,_aid=100;
 
 /* ---- LOCATION ---- */
-let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:45,stopRate:19,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5,femalePct:55,buyFemale:1.35,buyMale:0.55,defM2:60,convPrudence:1,bandFoot:25,bandCap:30,bandConv:15,sideRate:100,paceRate:100};
+let locSettings={maxRent:3000,sizeMin:40,sizeMax:100,maxM2:50,maxUpfrontMo:4,maxTraspaso:0,capRate:2,convRate:18,opHours:10,windowRate:45,stopRate:19,entryRate:38,seasHi:1.25,seasLo:0.80,buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97,browseRate:70,closeRate:26,baseFrontM:5,frontElast:0.5,femalePct:55,buyFemale:1.35,buyMale:0.55,defM2:60,convPrudence:1,bandFoot:25,bandCap:30,bandConv:15,sideRate:100,paceRate:100,intentAnchor:1.44,intentSlope:100};
 /* ---- Multi-stage footfall→sales funnel ----
    TWO layers. (1) Street type shapes the FOOTFALL→ENTRY funnel: notice → stop → enter,
    which multiply to the effective walk-in capture. Neutral ('') gives an eye-catching-shopfront
@@ -1612,6 +1612,21 @@ function obsCapture(o){
   const buy=(bu!=null&&en>0)?Math.max(0,Math.min(1,bu/en)):null;         // observed buyers/entrant (overrides conversion)
   return {cap,w,s,buy,pass,glance:gl,stop:st,enter:en,buyers:bu,min:gv('obsMin'),date:o.obsDate||''};
 }
+/* ---- Shopping-intent / footfall-quality ----
+   What share of RAW footfall is a plausible shopper vs pure through-traffic. A DESTINATION street (people came
+   to browse) qualifies nearly all its footfall; a CORRIDOR (people passing through to a transit node) qualifies
+   far less. This is the "qualified vs total traffic" distinction the capture benchmarks use — and it's the piece
+   the old model missed, which flattered high-footfall corridors like Tallers. Estimated WITHOUT a visit from the
+   weekend:weekday ratio (destinations rise on Saturday; commuter corridors stay flat), anchored so a typical
+   shopping lane (ratio ≈ intentAnchor) is fully qualified (100%) and flatter corridors discount below. Override
+   per street (oInt) to hand-tune from the popular-times curve SHAPE + the retail/anchor mix. */
+function intentRate(wk,we,ovr){
+  if(ovr!=null&&ovr!=='')return Math.max(0,Math.min(1.2,Number(ovr)/100));   // manual override
+  if(!(wk>0&&we>0))return 1;                                                  // no weekend data → neutral
+  const anchor=(locSettings.intentAnchor!=null?Number(locSettings.intentAnchor):1.44);
+  const slope=(locSettings.intentSlope!=null?Number(locSettings.intentSlope):100);
+  return Math.max(0.50,Math.min(1,(100+(we/wk-anchor)*slope)/100));           // 50–100%, capped at fully-qualified
+}
 /* Target neighbourhoods — where to focus the search (indicative secondary-street rent bands, €/m²·mo). */
 let locAreas=[
  {id:"A1",name:"Gràcia",streets:"Verdi · Torrijos · Astúries · Plaça del Sol · Travessera de Gràcia",rentLo:18,rentHi:30,scores:[4,5,5,5,5,4],note:"The flagship fit: village feel, independent shops, colour-loving young locals + curious travellers. Units are small and characterful — act fast when a good one appears."},
@@ -1645,9 +1660,10 @@ function streetKPI(s){
   const brBase=ov(s.oBr,browseRate()), clBase=ov(s.oCl,closeRate()); // ④ browse, ⑤ buy — per-street editable
   const cp=(locSettings.convPrudence!=null&&locSettings.convPrudence!=='')?Number(locSettings.convPrudence):1; // global new-brand caution dial
   const buyEff=brBase*clBase*am.buyMult*gm.buyMult*cp;           // entry→sale, audience- & gender-weighted × prudence
-  const perDay=blend*6*hrs, entr=perDay*cap, tx=entr*buyEff;     // footfall → capture → conversion → sales
-  const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 passers
-  return {perDay,entr,tx,cap,n:nR2,p:pR2,w:wR2,s:sR2,e:eR2,dN:F.n,dP:F.p,dW:F.w,dS:F.s,dE:F.e,br:brBase,cl:clBase,dBr:browseRate(),dCl:closeRate(),buyEff,eff,touristPct:am.touristPct,femalePct:gm.femalePct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
+  const intent=intentRate(wk,we,s.oInt);                          // shopping-intent qualifies the raw footfall
+  const perDay=blend*6*hrs, qualDay=perDay*intent, entr=qualDay*cap, tx=entr*buyEff; // footfall → qualified → capture → conversion → sales
+  const eff=perDay>0?tx/perDay*1000:0;                            // conversion quality: sales per 1,000 RAW passers
+  return {perDay,qualDay,intent,entr,tx,cap,n:nR2,p:pR2,w:wR2,s:sR2,e:eR2,dN:F.n,dP:F.p,dW:F.w,dS:F.s,dE:F.e,br:brBase,cl:clBase,dBr:browseRate(),dCl:closeRate(),buyEff,eff,touristPct:am.touristPct,femalePct:gm.femalePct,stype:s.stype||'',vsPlan:planTx>0?tx/planTx:0};
 }
 /* ---- Per-street rent & ROI: rent = size(m²) × €/m²·mo; return = retail GP after rent ---- */
 let streetSort='sales';
@@ -1686,11 +1702,11 @@ function streetRankCard(){
   const trap=byFoot.slice(0,topFootN).filter(o=>o.k.vsPlan<0.85).map(o=>o.s.name);
   const tier=v=>v>=1?['ok','clears plan']:v>=0.7?['review','near plan']:['elim','below plan'];
   let h=`<div class="card" style="margin-top:16px"><p class="sectiontitle">Street ranking — footfall → sales <span class="badge">the decision layer</span></p>`;
-  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The whole funnel is broken into its consumer-behaviour steps and <b>every step is editable per street</b>: <b>capture</b> = ⓝ Near-side → ⓟ Pace → ① Notice → ② Look → ③ Enter, then <b>conversion</b> = ④ Browse → ⑤ Buy (weighted by the street's audience &amp; <b>shopper gender mix</b>). The two new steps — <b>ⓝ near-side</b> (walks the shop's side of the street) and <b>ⓟ pace</b> (strolling vs rushing) — are what most separate a narrow leisure lane from a wide transit artery, before anyone even notices the window. Type a number into any ⓝ ⓟ ①–⑤ or <b>% ♀</b> cell to override that street (blank = the derived default, shown as the faint placeholder), or edit the global rates in the strip below — the ranking re-sorts live. <b>Sales/day = Footfall × Capture × Conversion.</b> <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
+  h+=`<p class="viewsub" style="margin:-6px 0 10px">Every street ordered by <b>modeled sales/day</b>, not raw footfall — because how well a street <i>converts</i> matters as much as how much traffic it has. <b>${clears} of ${scored.length}</b> streets clear the ${planTx}/day Year-1 plan. The whole funnel is broken into its consumer-behaviour steps and <b>every step is editable per street</b>: first <b>🎯 shopping-intent</b> qualifies the raw footfall (what share are plausible shoppers vs pure through-traffic), then <b>capture</b> = ⓝ Near-side → ⓟ Pace → ① Notice → ② Look → ③ Enter, then <b>conversion</b> = ④ Browse → ⑤ Buy (weighted by the street's audience &amp; <b>shopper gender mix</b>). <b>🎯 Intent</b> is what separates a high-footfall <i>corridor</i> (people passing through to a transit node) from a <i>destination</i> people came to browse — it's auto-estimated from the <b>weekend:weekday footfall ratio</b> (destinations rise on Saturday) and can be hand-tuned. Type a number into any 🎯 ⓝ ⓟ ①–⑤ or <b>% ♀</b> cell to override that street (blank = the derived default, shown as the faint placeholder), or edit the global rates in the strip below — the ranking re-sorts live. <b>Sales/day = Footfall × Intent × Capture × Conversion.</b> <b>Sales / 1k</b> = conversion quality (sales per 1,000 passers, independent of volume).</p>`;
   // editable global assumptions — partners can play with these
   h+=`<div class="rankset" style="background:#F7F6FC;border-radius:8px;padding:10px 12px;margin:0 0 12px"><p class="muted" style="font-size:11.5px;margin:0 0 7px"><b>Capture, conversion &amp; audience assumptions</b> — edit any rate and the ranking recomputes instantly. Capture = ⓝ × ⓟ × ① × ② × ③ (re-weighted by street type — ⓝ near-side &amp; ⓟ pace carry most of the street-to-street difference); conversion = ④ × ⑤ (re-weighted by tourist/local mix and by shopper gender). Because HappyNes' colourful, personalised charms skew female, a higher <b>% ♀</b> lifts the buy rate (♀ buy × vs ♂ buy ×). Per-type &amp; tourist/local multipliers live in the Footfall model card below.</p><div style="display:flex;flex-wrap:wrap;gap:14px">`+[["sideRate","ⓝ Near-side %"],["paceRate","ⓟ Pace %"],["windowRate","① Notices %"],["stopRate","② Looks %"],["entryRate","③ Enters %"],["browseRate","④ Browses %"],["closeRate","⑤ Buys %"],["femalePct","Default % ♀"],["buyFemale","♀ buy ×"],["buyMale","♂ buy ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${esc(l)}</label><input class="num" style="width:58px" type="number" step="any" value="${locSettings[k]??''}" onchange="updLocSetting('${k}',this.value)"></div>`).join('')+`</div><div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed #D9D5EC"><label class="bb" style="margin:0">Conversion prudence ×</label><input class="num" style="width:60px;background:#F0FBF6;font-weight:700" type="number" step="0.05" value="${locSettings.convPrudence??1}" onchange="updConvPrudence(this.value)"><span class="muted" style="font-size:11px">one dial for the whole model's new-brand caution — scales every street's entry→sale conversion <b>and the active store's financials</b>. <b>1.00</b> = raw street estimates; now <b>${Math.round((locSettings.convPrudence??1)*100)}%</b>. Lower = a new, unknown brand converting below a proven one.</span></div></div>`;
   h+=`<div style="margin:0 0 10px;font-size:12px"><b>Rank by:</b> <button class="lnk" style="${!sortByROI?'font-weight:800;text-decoration:underline':''}" onclick="setStreetSort('sales')">Sales/day</button> · <button class="lnk" style="${sortByROI?'font-weight:800;text-decoration:underline':''}" onclick="setStreetSort('roi')">Net after rent (ROI)</button> <span class="muted">— a street can win on sales but lose on rent, or vice-versa. Set each street's <b>size</b> and <b>€/m²</b> (blank = neighbourhood band) to size the rent.</span></div>`;
-  h+=`<div style="overflow-x:auto"><table class="grid2 rank"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Walks on the shop's side of the street (vs the far side / central reservation)">ⓝ Near-side</th><th title="At a strolling / receptive pace (vs rushing or commuting)">ⓟ Pace</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th title="Female share of passing footfall — lifts the buy rate">% ♀</th><th title="Browses the store (given entry)">④ Browse</th><th title="Buys (given browse)">⑤ Buy</th><th title="Entry → sale conversion = ④ × ⑤, weighted by audience & gender">Conversion</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th><th title="Typical usable store size on this street">Size m²</th><th title="Rent per m² per month — blank uses the neighbourhood band">€/m²·mo</th><th title="Expected average monthly store revenue = sales/day × net ATV × open days/month">Rev/mo</th><th title="Retail gross margin on store sales — blank uses the global Finance retail margin">Margin %</th><th title="Monthly rent = size × €/m²">Rent/mo</th><th title="Monthly retail gross profit after rent (the ROI view) — and rent as % of sales">Net after rent</th></tr></thead><tbody>`;
+  h+=`<div style="overflow-x:auto"><table class="grid2 rank"><thead><tr><th>#</th><th>Street</th><th>Area</th><th>Type</th><th>Footfall/day</th><th title="Shopping-intent — share of footfall that's a plausible shopper vs pure through-traffic. Auto from the weekend:weekday ratio (destinations rise on Saturday; corridors stay flat); override to tune from the popular-times shape + retail mix.">🎯 Intent</th><th title="Walks on the shop's side of the street (vs the far side / central reservation)">ⓝ Near-side</th><th title="At a strolling / receptive pace (vs rushing or commuting)">ⓟ Pace</th><th title="Notices the shopfront">① Notice</th><th title="Slows &amp; looks at the window">② Look</th><th title="Enters (given look)">③ Enter</th><th>Capture</th><th title="Female share of passing footfall — lifts the buy rate">% ♀</th><th title="Browses the store (given entry)">④ Browse</th><th title="Buys (given browse)">⑤ Buy</th><th title="Entry → sale conversion = ④ × ⑤, weighted by audience & gender">Conversion</th><th>Sales/day</th><th>% of plan</th><th>Sales / 1k</th><th title="Typical usable store size on this street">Size m²</th><th title="Rent per m² per month — blank uses the neighbourhood band">€/m²·mo</th><th title="Expected average monthly store revenue = sales/day × net ATV × open days/month">Rev/mo</th><th title="Retail gross margin on store sales — blank uses the global Finance retail margin">Margin %</th><th title="Monthly rent = size × €/m²">Rent/mo</th><th title="Monthly retail gross profit after rent (the ROI view) — and rent as % of sales">Net after rent</th></tr></thead><tbody>`;
   bySales.forEach((o,i)=>{const s=o.s,k=o.k;const[tc,tl]=tier(k.vsPlan);const roi=streetROI(s,k);
     const effW=Math.round(k.eff/maxEff*100);
     const fr=footRank.get(s.id);const trapFlag=(fr<topFootN&&k.vsPlan<0.85)?` <span title="High footfall, weak conversion — the footfall trap" style="color:var(--st-blocked);font-weight:700">⚠ trap</span>`:'';
@@ -1699,6 +1715,7 @@ function streetRankCard(){
     `<td class="muted">${esc(s.area||'')}</td>`+
     `<td><select class="sel" onchange="updStreet('${s.id}','stype',this.value)">${STYPE_KEYS.map(t=>`<option value="${t}" ${((s.stype||'')===t)?'selected':''}>${esc(STYPE[t].label)}</option>`).join('')}</select></td>`+
     `<td>${num(k.perDay)}</td>`+
+    `<td><input class="num" type="number" placeholder="${Math.round(intentRate(Number(s.sfWk),Number(s.sfWe),'')*100)}" value="${escAttr(s.oInt)}" onchange="updStreet('${s.id}','oInt',this.value)" title="Qualified footfall ~${num(k.qualDay)}/day of ${num(k.perDay)}"></td>`+
     `<td><input class="num" type="number" placeholder="${(k.dN*100).toFixed(0)}" value="${escAttr(s.oN)}" onchange="updStreet('${s.id}','oN',this.value)"></td>`+
     `<td><input class="num" type="number" placeholder="${(k.dP*100).toFixed(0)}" value="${escAttr(s.oP)}" onchange="updStreet('${s.id}','oP',this.value)"></td>`+
     `<td><input class="num" type="number" placeholder="${(k.dW*100).toFixed(0)}" value="${escAttr(s.oW)}" onchange="updStreet('${s.id}','oW',this.value)"></td>`+
@@ -1821,14 +1838,16 @@ function locKPI(l){
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
   const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront (unit-specific)
   const ob=obsCapture(l);                                     // on-street timed count (Sept field data) → observed rates
+  const intent=linkSt?intentRate(Number(linkSt.sfWk),Number(linkSt.sfWe),linkSt.oInt):intentRate(wk,we,l.oInt); // shopping-intent (inherit street)
+  const qualDay=perDay*intent;                               // qualified footfall = raw × shopping-intent
   const nR=linkSt?iv(linkSt.oN,F.n):F.n, pR=linkSt?iv(linkSt.oP,F.p):F.p;      // ⓝ near-side, ⓟ pace (inherit street)
   const wR=linkSt?iv(linkSt.oW,F.w):F.w, sR=linkSt?iv(linkSt.oL,F.s):F.s, eR=linkSt?iv(linkSt.oE,F.e):F.e; // ①②③
   const capBase=nR*pR*wR*sR*eR;                               // same 5-step chain as streetKPI
-  const reach=perDay*nR*pR;                                   // ⓝ near-side × ⓟ pace — reachable pool before the shopfront
+  const reach=qualDay*nR*pR;                                  // qualified × ⓝ near-side × ⓟ pace — reachable pool before the shopfront
   const capEff=(ob&&ob.cap!=null)?ob.cap:capBase*ff;          // observed capture overrides the estimate; frontage is unit-specific
-  const notice=(ob&&ob.w!=null)?perDay*ob.w:reach*wR*ff;
+  const notice=(ob&&ob.w!=null)?qualDay*ob.w:reach*wR*ff;
   const stop=(ob&&ob.s!=null)?notice*ob.s:notice*sR;
-  const entr=perDay*capEff;
+  const entr=qualDay*capEff;
   const brR=linkSt?iv(linkSt.oBr,browseRate()):browseRate();  // ④ browse (inherit street override)
   const clBase=linkSt?iv(linkSt.oCl,closeRate()):closeRate(); // ⑤ buy (inherit street override)
   const clEff=clBase*am.buyMult*gm.buyMult;                   // audience- & gender-weighted close
@@ -1840,7 +1859,7 @@ function locKPI(l){
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
   const cb=convBand();                                        // low/base/high confidence band
-  return {blend10,perDay,reach,nearSide:nR,pace:pR,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:capEff,capEff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0,calibrated:!!(ob&&ob.cap!=null),obs:ob,swing:cb.swing,txLo:tx*cb.lo,txHi:tx*cb.hi,eurMoLo:eurMo*cb.lo,eurMoHi:eurMo*cb.hi};
+  return {blend10,perDay,intent,qualDay,reach,nearSide:nR,pace:pR,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:capEff,capEff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0,calibrated:!!(ob&&ob.cap!=null),obs:ob,swing:cb.swing,txLo:tx*cb.lo,txHi:tx*cb.hi,eurMoLo:eurMo*cb.lo,eurMoHi:eurMo*cb.hi};
 }
 /* ---- Reference: footfall figures + their provenance, shown below the street tables ---- */
 function footfallRefCard(){
