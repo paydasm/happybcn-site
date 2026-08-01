@@ -1806,28 +1806,41 @@ function locKPI(l){
   const hasWk=l.fwWk!==''&&l.fwWk!=null&&!isNaN(wk), hasWe=l.fwWe!==''&&l.fwWe!=null&&!isNaN(we);
   if(!hasWk&&!hasWe)return null;
   const pos=(l.posFactor!=null&&l.posFactor!=='')?Number(l.posFactor):1;   // micro-location: corner near metro >1, dead mid-block <1
-  const F=funnelRates(l.stype||''); const am=audienceMix(l); const gm=genderMix(l);
+  // Shared funnel with streetKPI: a unit linked to a street (l.streetId) inherits that street's tuning
+  // (near-side/pace/notice/look/enter + browse/close + ♀-share + audience), so unit == street for the same
+  // spot; the unit only adds its OWN specifics on top (frontage, position, observed count). convPrudence is
+  // now applied here too, matching streetKPI — the two calculations agree.
+  const linkSt=(l.streetId!=null&&l.streetId!=='')?locStreets.find(s=>s.id===l.streetId):null;
+  const styp=(linkSt&&linkSt.stype)||l.stype||'';
+  const F=funnelRates(styp);
+  const am=audienceMix({stype:styp,touristPct:(l.touristPct!=null&&l.touristPct!=='')?l.touristPct:(linkSt?linkSt.touristPct:'')});
+  const gm=genderMix({gPct:(l.gPct!=null&&l.gPct!=='')?l.gPct:(linkSt?linkSt.gPct:'')});
+  const cpU=(locSettings.convPrudence!=null&&locSettings.convPrudence!=='')?Number(locSettings.convPrudence):1; // global new-brand caution (now applied to units too)
+  const iv=(v,def)=>(v!=null&&v!=='')?Number(v)/100:def;      // inherit a linked-street override (blank → funnel default)
   const blend10=(hasWk&&hasWe)?(wk*5+we*1)/6:(hasWk?wk:we);   // Mon–Sat, Saturday at the weekend rate
   const perDay=blend10*6*oph*pos;                             // /10min → /hr → × busy hours/day × position
-  // Consumer-behaviour funnel: pass → notice (attention) → stop/look (interest) → enter (decision) → browse (engagement) → buy (purchase)
-  const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront
+  const ff=frontFactor(l);                                    // wider frontage/window → more notice the shopfront (unit-specific)
   const ob=obsCapture(l);                                     // on-street timed count (Sept field data) → observed rates
-  const reach=perDay*F.n*F.p;                                 // ⓝ near-side × ⓟ pace — reachable pool before the shopfront
-  const capEff=(ob&&ob.cap!=null)?ob.cap:F.cap*ff;            // observed capture overrides the modeled estimate for this unit
-  const notice=(ob&&ob.w!=null)?perDay*ob.w:reach*F.w*ff;    // capture = near-side × pace × notice × look × enter
-  const stop=(ob&&ob.s!=null)?notice*ob.s:notice*F.s;
+  const nR=linkSt?iv(linkSt.oN,F.n):F.n, pR=linkSt?iv(linkSt.oP,F.p):F.p;      // ⓝ near-side, ⓟ pace (inherit street)
+  const wR=linkSt?iv(linkSt.oW,F.w):F.w, sR=linkSt?iv(linkSt.oL,F.s):F.s, eR=linkSt?iv(linkSt.oE,F.e):F.e; // ①②③
+  const capBase=nR*pR*wR*sR*eR;                               // same 5-step chain as streetKPI
+  const reach=perDay*nR*pR;                                   // ⓝ near-side × ⓟ pace — reachable pool before the shopfront
+  const capEff=(ob&&ob.cap!=null)?ob.cap:capBase*ff;          // observed capture overrides the estimate; frontage is unit-specific
+  const notice=(ob&&ob.w!=null)?perDay*ob.w:reach*wR*ff;
+  const stop=(ob&&ob.s!=null)?notice*ob.s:notice*sR;
   const entr=perDay*capEff;
-  const brR=browseRate();                                     // % of entrants who actively browse
-  const clEff=closeRate()*am.buyMult*gm.buyMult;              // % of browsers who buy, audience- & gender-weighted
+  const brR=linkSt?iv(linkSt.oBr,browseRate()):browseRate();  // ④ browse (inherit street override)
+  const clBase=linkSt?iv(linkSt.oCl,closeRate()):closeRate(); // ⑤ buy (inherit street override)
+  const clEff=clBase*am.buyMult*gm.buyMult;                   // audience- & gender-weighted close
   const browse=entr*brR;
-  const buyEff=(ob&&ob.buy!=null)?ob.buy:brR*clEff;           // observed buyers/entrant overrides modeled conversion
+  const buyEff=(ob&&ob.buy!=null)?ob.buy:brR*clEff*cpU;       // entry→sale, now × prudence — matches streetKPI
   const tx=entr*buyEff;                                       // sales/day
   const atvEff=atv*am.atvMult;                                // spend, audience-weighted
   const eurMo=tx*atvEff*days;
   const seasHi=locSettings.seasHi??1.25, seasLo=locSettings.seasLo??0.80;
   const rentRatio=(Number(l.rent)>0&&eurMo>0)?Number(l.rent)/eurMo*100:null;
   const cb=convBand();                                        // low/base/high confidence band
-  return {blend10,perDay,reach,nearSide:F.n,pace:F.p,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:capEff,capEff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0,calibrated:!!(ob&&ob.cap!=null),obs:ob,swing:cb.swing,txLo:tx*cb.lo,txHi:tx*cb.hi,eurMoLo:eurMo*cb.lo,eurMoHi:eurMo*cb.hi};
+  return {blend10,perDay,reach,nearSide:nR,pace:pR,notice,stop,entr,browse,tx,eurMo,eurHi:eurMo*seasHi,eurLo:eurMo*seasLo,rentRatio,oph,pos,cap:capEff,capEff,ff,buyEff,brR,clEff,atvEff,touristPct:am.touristPct,touristExplicit:am.explicit,femalePct:gm.femalePct,stype:l.stype||'',stlabel:F.label,vsPlan:planTx>0?tx/planTx:0,calibrated:!!(ob&&ob.cap!=null),obs:ob,swing:cb.swing,txLo:tx*cb.lo,txHi:tx*cb.hi,eurMoLo:eurMo*cb.lo,eurMoHi:eurMo*cb.hi};
 }
 /* ---- Reference: footfall figures + their provenance, shown below the street tables ---- */
 function footfallRefCard(){
