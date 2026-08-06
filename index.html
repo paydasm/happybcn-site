@@ -1937,21 +1937,48 @@ function footfallCard(){
   const dflt={sideRate:100,paceRate:100,windowRate:35,stopRate:15,entryRate:38,browseRate:70,closeRate:26,opHours:10};
   h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:10px">`+A.map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="any" value="${locSettings[k]??dflt[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
   // ---- visual consumer-behaviour funnel (reference: 10,000 weekday passers, neutral type) ----
-  const N=10000; let prev=N;
+  // Shows EVERY component of the footfall→sales chain, in the four phases it runs through.
+  const N=10000;
+  const fr=funnelRates('');                                 // neutral capture sub-steps (n,p,w,s,e)
+  const iN=1, hN=1, adjN=1, compN=1;                        // qualify + context modifiers: neutral street = pass-through
+  const brR=browseRate(), buyN=buyBase();                   // browse rate, overall entry→buy
+  const clR=buyN>0&&brR>0?buyN/brR:0.26;                     // implied close rate (buy | browse)
+  const amN=audienceMix({stype:''}).buyMult, gN=genderMix({}).buyMult;   // audience + gender buy-weights (neutral)
+  // cumulative counts down the chain
+  const cQual=N*iN*hN;                                       // qualified footfall
+  const cSide=cQual*fr.n, cPace=cSide*fr.p, cNot=cPace*fr.w, cLook=cNot*fr.s, cEnt=cLook*fr.e;
+  const cBrow=cEnt*brR, cBuy=cBrow*clR, cAG=cBuy*amN*gN;     // convert + audience/gender weighting
+  const cAdj=cAG*adjN, cComp=cAdj*compN;                     // context modifiers
+  // [phase, name, sub-tag, count, rate-of-prev (0–1+), colour, typical per-street range]
   const fsteps=[
-    ['Passes by','',N,null,'#C7C2E8'],
-    ['Notices','attention',N*(wR/100),wR,'#A99DE0'],
-    ['Slows &amp; looks','interest',N*(wR/100)*(sR/100),sR,'#8E7DD6'],
-    ['Enters','decision',N*capEff,eR,'#7A5AF8'],
-    ['Browses','engagement',N*capEff*browseRate(),locSettings.browseRate??70,'#5B3FD4'],
-    ['Buys','purchase',N*capEff*buyEffN,locSettings.closeRate??26,'#3F2AA8']
+    ['QUALIFY','Passes by','raw street footfall',N,null,'#CFCBEA','—'],
+    ['QUALIFY','🎯 Shopping-intent','plausible shoppers',cQual,iN,'#BDB6E6','50–100%'],
+    ['QUALIFY','⏰ Hours-fit','passing while open',cQual,hN,'#ADA4E1','80–100%'],
+    ['CAPTURE','ⓝ Near-side','on the shop’s side',cSide,fr.n,'#9C8FDC','50–95%'],
+    ['CAPTURE','ⓟ Pace','strolling, receptive',cPace,fr.p,'#8B7BD6','55–105%'],
+    ['CAPTURE','① Notices','window catches eye',cNot,fr.w,'#7A5AF8','40–50%'],
+    ['CAPTURE','② Slows &amp; looks','stops to engage',cLook,fr.s,'#6A46E4','16–22%'],
+    ['CAPTURE','③ Enters','walks in',cEnt,fr.e,'#5B3FD4','35–45%'],
+    ['CONVERT','④ Browses','actively looks round',cBrow,brR,'#4A32C0','65–75%'],
+    ['CONVERT','⑤ Buys','reaches the till',cBuy,clR,'#3B2AA8','22–30%'],
+    ['CONVERT','🧑‍🤝‍🧑 Audience &amp; gender','tourist/local · ♀/♂ fit',cAG,amN*gN,'#2E2190','×0.8–1.2'],
+    ['CONTEXT','🏬 Adjacency','block’s shop mix',cAdj,adjN,'#0E9AA7','90–115%'],
+    ['CONTEXT','⚔️ Competition','rivals split / cluster',cComp,compN,'#0B8391','80–120%'],
+    ['RESULT','✅ Buyers / day-equiv','the sale',cComp,null,'#2C7A4B','outcome']
   ];
-  h+=`<p class="sectiontitle" style="margin:6px 0 6px;font-size:13px">The behaviour cascade — per 10,000 weekday passers (neutral street)</p><div style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px">`;
-  fsteps.forEach(([name,tag,cnt,rate,col],i)=>{const w=Math.max(1.5,cnt/N*100);
-    h+=`<div style="display:flex;align-items:center;gap:10px"><div style="flex:0 0 128px;font-size:12px;text-align:right"><b>${name}</b>${tag?` <span class="muted" style="font-size:10px">${tag}</span>`:''}</div>`+
+  const phMeta={QUALIFY:['Qualify the footfall','#EFEDFA'],CAPTURE:['Capture — walk-in (ⓝⓟ①②③)','#EDEAFB'],CONVERT:['Convert — entrant → buyer (④⑤)','#EEECFA'],CONTEXT:['Context modifiers','#E7F6F7'],RESULT:['Result','#EAF6EF']};
+  h+=`<p class="sectiontitle" style="margin:6px 0 6px;font-size:13px">The full behaviour cascade — every component, per 10,000 weekday passers (neutral street)</p>`;
+  h+=`<p class="muted" style="font-size:11px;margin:0 0 8px">Each bar is one gate in <b>Footfall × 🎯 Intent × ⏰ Hours-fit × Capture(ⓝⓟ①②③) × Conversion(④⑤ · audience/gender) × 🏬 Adjacency × ⚔️ Competition</b>. On a <b>neutral</b> street the qualify &amp; context gates pass everything (100%); per street they discount within the typical range shown on the right — that’s where the street type and pitch move the outcome.</p>`;
+  h+=`<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px">`;
+  let curPh='';
+  fsteps.forEach(([ph,name,tag,cnt,rate,col,rng])=>{
+    if(ph!==curPh){curPh=ph;const pm=phMeta[ph];
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin:6px 0 1px"><span style="flex:0 0 132px"></span><span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:#6b6b6b;text-transform:uppercase;background:${pm[1]};padding:2px 9px;border-radius:8px">${pm[0]}</span></div>`;}
+    const w=Math.max(1.5,cnt/N*100);
+    h+=`<div style="display:flex;align-items:center;gap:10px"><div style="flex:0 0 132px;font-size:12px;text-align:right"><b>${name}</b>${tag?`<br><span class="muted" style="font-size:9.5px">${tag}</span>`:''}</div>`+
     `<div style="flex:1;background:#F1F0F7;border-radius:5px;overflow:hidden;height:22px;position:relative"><div style="width:${w}%;height:100%;background:${col};border-radius:5px;transition:width .3s"></div><span style="position:absolute;left:8px;top:0;line-height:22px;font-size:11px;font-weight:700;color:${w>18?'#fff':'#333'}">${num(cnt)}</span></div>`+
-    `<div style="flex:0 0 84px;font-size:11px" class="muted">${rate!=null?`${rate}% of prev`:'baseline'}</div></div>`;});
-  h+=`</div><p class="muted" style="font-size:11px;margin:0 0 12px">Of 10,000 people who walk past, ~<b>${num(N*capEff)}</b> come in (capture) and ~<b>${(N*capEff*buyEffN).toFixed(0)}</b> buy. Each bar is a behaviour most people don't take — which is why storefront, window and street type matter so much: they move the early steps, where the biggest numbers drop out.</p>`;
+    `<div style="flex:0 0 104px;font-size:10.5px" class="muted">${rate!=null?`<b>${(rate*100).toFixed(0)}%</b> of prev<br><span style="font-size:9.5px">typ ${rng}</span>`:(rng==='outcome'?'<b>final</b>':'baseline')}</div></div>`;});
+  h+=`</div><p class="muted" style="font-size:11px;margin:0 0 12px">Of 10,000 people who walk past, ~<b>${num(cEnt)}</b> come in (${(fr.cap*100).toFixed(1)}% capture) and ~<b>${cComp.toFixed(0)}</b> buy. The biggest drop-outs are early — <b>notice</b>, <b>slow &amp; look</b>, <b>enter</b> — which is exactly why storefront, window width and street type matter so much: they move the steps where the most people are lost. 🏘️ <b>Catchment</b> (residential repeat custom) sits outside this Year-1 chain — it compounds into Year 2/3 and is shown in the ranking, not here.</p>`;
   h+=`<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px"><div class="setrow"><label style="min-width:0">Peak-season × (annualise)</label><input class="num" type="number" step="0.05" value="${locSettings.seasHi??1.25}" onchange="updLocSetting('seasHi',this.value)"></div><div class="setrow"><label style="min-width:0">Low-season ×</label><input class="num" type="number" step="0.05" value="${locSettings.seasLo??0.80}" onchange="updLocSetting('seasLo',this.value)"></div><div class="setrow"><label style="min-width:0">Baseline frontage (m)</label><input class="num" type="number" step="0.5" value="${locSettings.baseFrontM??5}" onchange="updLocSetting('baseFrontM',this.value)"></div><div class="setrow"><label style="min-width:0">Frontage elasticity</label><input class="num" type="number" step="0.05" value="${locSettings.frontElast??0.5}" onchange="updLocSetting('frontElast',this.value)"></div><div class="setrow"><label style="min-width:0"><b>Effective capture (neutral)</b></label><input class="num" type="number" value="${(capEff*100).toFixed(2)}" disabled style="background:#F0EEF9;font-weight:700"></div></div><p class="muted" style="font-size:11px;margin:-4px 0 10px">Frontage: a unit's window width (set per unit in Details) scales its notice/look steps vs the baseline — elasticity ${locSettings.frontElast??0.5} means a 2× wider window lifts capture ~${(Math.pow(2,locSettings.frontElast??0.5)*100-100).toFixed(0)}% (bounded ×0.6–×1.6).</p>`;
   // audience-mix conversion layer
   h+=`<p class="sectiontitle" style="margin:14px 0 4px;font-size:13px">Audience mix — buy-rate & spend by tourist vs local</p><p class="muted" style="font-size:11.5px;margin:0 0 8px">These multipliers apply to the ⑤ buy step (given browse) and average spend. Set each unit's <b>Tourist mix %</b> in Details (or leave blank to use the street-type default below). Tourist × below 1 on buy = browses more, closes less; local × above 1 = comes with intent.</p><div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:4px">`+[["buyTourist","Tourist buy ×"],["buyLocal","Local buy ×"],["atvTourist","Tourist spend ×"],["atvLocal","Local spend ×"]].map(([k,l])=>`<div class="setrow"><label style="min-width:0">${l}</label><input class="num" type="number" step="0.05" value="${locSettings[k]??({buyTourist:0.85,buyLocal:1.15,atvTourist:1.05,atvLocal:0.97})[k]}" onchange="updLocSetting('${k}',this.value)"></div>`).join("")+`</div>`;
@@ -2101,9 +2128,9 @@ function viewLocation(){
     <td><button class="rmv" onclick="rmArea('${a.id}')">×</button></td></tr>`;
     if(a.note)h+=`<tr><td colspan="5" class="muted" style="font-size:12px;white-space:normal;padding-top:0;font-weight:400">${esc(a.note)}</td></tr>`;});
   h+=`</tbody></table></div><div class="addtask"><button class="addbtn" onclick="addArea()">+ Add neighbourhood</button></div></div>`;
+  h+=footfallCard();
   h+=streetRankCard();
   h+=streetsCard();
-  h+=footfallCard();
   h+=destinationCard();
   h+=bandCard();
   const stageCount=LOC_STAGES.reduce((o,s)=>{o[s]=locListings.filter(l=>(l.status||'Spotted')===s).length;return o;},{});
