@@ -557,7 +557,8 @@ function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">"
 function renderTabs(){
   const tabs=[["summary","Summary & Vision"],["dashboard","Dashboard & Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
   $("#tabbar").innerHTML = tabs.map(([id,label])=>
-    `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("");
+    `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("")
+    + `<a class="tab" href="library.html" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">📁 Documents</a>`;
 }
 function setView(v){view=v;render();}
 
