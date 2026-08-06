@@ -558,7 +558,7 @@ function renderTabs(){
   const tabs=[["summary","Summary & Vision"],["dashboard","Dashboard & Roadmap"],["segments","By Segment"],["brand","Brand Book"],["location","Location"],["fitout","Fit-out"],["sourcing","Sourcing"],["b2b","B2B"],["promo","Promo"],["finance","Finance"],["market","Market Insights"],["launch","Launch"],["outreach","Outreach"],["team","Team"],["growth","Growth"]];
   $("#tabbar").innerHTML = tabs.map(([id,label])=>
     `<div class="tab ${view===id?'active':''}" onclick="setView('${id}')">${label}</div>`).join("")
-    + `<a class="tab" href="library.html" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">📁 Documents</a>`;
+    + `<div class="tab ${view==='documents'?'active':''}" onclick="setView('documents')">📁 Documents</div>`;
 }
 function setView(v){view=v;render();}
 
@@ -641,6 +641,13 @@ function _buildExport(kind){
     _save(wb,'Launch-KPIs');
   }
 }
+function viewDocuments(){
+  return `<div class="card"><h2>📁 Documents</h2>`
+    +`<p class="muted" style="margin:0 0 10px">Every deliverable — presentations, draft messages, plans, models — downloadable in one place. `
+    +`Prefer full screen? <a href="library.html" target="_blank" rel="noopener">Open the library in a new tab ↗</a></p>`
+    +`<iframe src="library.html" title="HappyBCN Document Library" loading="lazy" `
+    +`style="width:100%;height:calc(100vh - 230px);min-height:560px;border:1px solid #e2ddd4;border-radius:10px;background:#fff"></iframe></div>`;
+}
 function render(){
   renderTabs();
   renderHeaderProgress();
@@ -664,6 +671,7 @@ function render(){
   else if(view==="outreach") out=viewOutreach();
   else if(view==="team") out=viewTeam();
   else if(view==="growth") out=viewGrowth();
+  else if(view==="documents") out=viewDocuments();
   const DLV={finance:1,roadmap:1,b2b:1,promo:1,launch:1};
   if(DLV[view]) out=out.replace('</h2>','</h2>'+dlBar(view));
   m.innerHTML=out;
